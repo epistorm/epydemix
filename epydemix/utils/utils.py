@@ -397,56 +397,17 @@ def combine_simulation_outputs(
     return combined_simulation_outputs
 
 
-def chain_multinomial(n, p, stay_idx, rng=None, check_tol=1e-12):
+def multinomial(n, p, stay_idx, mask):
     """
-    Competing-risks multinomial with an explicit 'stay' category. 
-    The function assumes that the probability of staying is 0 (i.e., p does not include the probability of staying).
-
-    Args:
-        n (int): Number of individuals in the source compartment.
-        p (array-like): Length-K vector. For k != stay_idx, p[k] = r_k * dt.
-        stay_idx (int): Index of the 'stay' category.
-        rng : np.random.Generator or seed or None. If None, uses default_rng().
-
-    Returns:
-        counts (np.ndarray of int, shape (K,)): Realized counts for each category (including 'stay'), summing to n.
+    Multinomial distribution with a stay compartment.
     """
-    p = np.asarray(p, dtype=float)
-    K = p.size
-    if not (0 <= stay_idx < K):
-        raise IndexError("stay_idx out of bounds.")
-    if np.any(p < -1e-16):
-        raise ValueError("All entries in p must be non-negative.")
-
-    # Total hazard H = sum over all entries (stay entry should be 0)
-    H = float(p.sum())
-
-    rng = np.random.default_rng(rng)
-    counts = np.zeros(K, dtype=int)
-
-    if H <= check_tol:
-        # No hazard -> everyone stays
-        counts[stay_idx] = n
-        return counts
-
-    # Probability of leaving given total hazard H
-    p_leave = -np.expm1(-H)         
-    p_leave = min(max(p_leave, 0.0), 1.0)  # clamp for floating-point safety
-
-    # Draw total exits
-    exits = rng.binomial(n, p_leave)
-    stays = n - exits
-
-    if exits == 0:
-        counts[stay_idx] = n
-        return counts
-
-    # Split exits proportionally to hazards (stay has zero weight, so gets 0)
-    q = p / H
-    alloc = rng.multinomial(exits, q)  # alloc.sum() == exits, alloc[stay_idx] == 0
-
-    # Fill output: allocated exits + residual stays
-    counts[:] = alloc
-    counts[stay_idx] = stays  # overwrite (alloc[stay_idx] is 0 anyway)
-
-    return counts
+    # compute total hazard
+    H = np.sum(p)
+    p_leave = -np.expm1(-H)
+    
+    # Vectorized operations using the mask
+    probs = np.zeros_like(p, dtype=float)   
+    probs[mask] = p_leave * p[mask] / H
+    probs[stay_idx] = 1 - p_leave
+    
+    return np.random.multinomial(n, probs)

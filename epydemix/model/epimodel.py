@@ -1,5 +1,5 @@
 from .transition import Transition
-from ..utils.utils import format_simulation_output, create_definitions, apply_overrides, chain_multinomial, evaluate, compute_simulation_dates, apply_initial_conditions
+from ..utils.utils import format_simulation_output, create_definitions, apply_overrides, evaluate, compute_simulation_dates, apply_initial_conditions, multinomial
 from .simulation_output import Trajectory
 from .simulation_results import SimulationResults
 import numpy as np 
@@ -672,7 +672,7 @@ class EpiModel:
         Raises:
             RuntimeError: If the simulation fails.
         """
-        
+
         # Run multiple simulations and collect trajectories
         try:
             trajectories = []
@@ -855,6 +855,7 @@ def stochastic_simulation(T: int,
             prob.fill(0)
             source_idx = comp_indices[comp]
             current_pop = compartments_evolution[t, source_idx]
+            mask = np.arange(prob.shape[0]) != source_idx
 
             if not np.any(current_pop):
                 continue
@@ -865,12 +866,9 @@ def stochastic_simulation(T: int,
                     tr.params, system_data
                 )
                 prob[target_idx] += trans_prob
-            
-            # Compute remaining probability
-            #prob[source_idx] = 1 - np.sum(prob, axis=0)
-            
+                        
             delta = np.array([
-                chain_multinomial(n, p, source_idx) if n > 0 else np.zeros(C)
+                multinomial(n, p, source_idx, mask) if n > 0 else np.zeros(C)
                 for n, p in zip(current_pop, prob.T)
             ])
 
@@ -901,10 +899,8 @@ def compute_spontaneous_transition_probability(params, data):
         env_copy = copy.deepcopy(data["parameters"])
         rate_eval = evaluate(expr=params, env=env_copy)[data["t"]]
         return rate_eval * data["dt"]
-        #return 1 - np.exp(-rate_eval * data["dt"])
     else:
         return params * data["dt"]
-        #return 1 - np.exp(-params * data["dt"])   
 
 
 def compute_mediated_transition_probability(params, data): 
@@ -932,7 +928,6 @@ def compute_mediated_transition_probability(params, data):
             data["contact_matrix"]["overall"] * data["pop"][agent_idx] / data["pop_sizes"], 
             axis=1
         )
-    #return 1 - np.exp(-rate_eval * interaction * data["dt"])
     return rate_eval * interaction * data["dt"]
 
 
