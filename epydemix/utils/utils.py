@@ -404,6 +404,11 @@ def multinomial(n, p, stay_idx, mask):
     # compute total hazard
     H = np.sum(p)
     p_leave = -np.expm1(-H)
+
+    if H <= 0.0:
+        out = np.zeros_like(p, dtype=int)
+        out[stay_idx] = n
+        return out
     
     # Vectorized operations using the mask
     probs = np.zeros_like(p, dtype=float)   
