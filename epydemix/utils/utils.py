@@ -397,10 +397,16 @@ def combine_simulation_outputs(
     return combined_simulation_outputs
 
 
-def multinomial(n, p, stay_idx, mask):
+def multinomial(n, p, stay_idx, mask, use_hazard_correction=True):
     """
     Multinomial distribution with a stay compartment.
     """
+    if use_hazard_correction == False:
+        probs = np.zeros_like(p, dtype=float)  
+        probs[mask] = p[mask] 
+        probs[stay_idx] = 1 - np.sum(p[mask])
+        return np.random.multinomial(n, probs)
+    
     # compute total hazard
     H = np.sum(p)
     p_leave = -np.expm1(-H)
