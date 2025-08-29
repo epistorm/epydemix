@@ -399,7 +399,8 @@ def combine_simulation_outputs(
 
 def chain_multinomial(n, p, stay_idx, rng=None, check_tol=1e-12):
     """
-    Competing-risks multinomial with an explicit 'stay' category.
+    Competing-risks multinomial with an explicit 'stay' category. 
+    The function assumes that the probability of staying is 0 (i.e., p does not include the probability of staying).
 
     Args:
         n (int): Number of individuals in the source compartment.
@@ -411,17 +412,14 @@ def chain_multinomial(n, p, stay_idx, rng=None, check_tol=1e-12):
         counts (np.ndarray of int, shape (K,)): Realized counts for each category (including 'stay'), summing to n.
     """
     p = np.asarray(p, dtype=float)
-    K = p.size # number of categories
+    K = p.size
     if not (0 <= stay_idx < K):
         raise IndexError("stay_idx out of bounds.")
     if np.any(p < -1e-16):
         raise ValueError("All entries in p must be non-negative.")
 
-    # Aggregate total hazard H = sum of non-stay components
-    dest_mask = np.ones(K, dtype=bool)
-    dest_mask[stay_idx] = False
-    h = p[dest_mask] 
-    H = float(h.sum())
+    # Total hazard H = sum over all entries (stay entry should be 0)
+    H = float(p.sum())
 
     rng = np.random.default_rng(rng)
     counts = np.zeros(K, dtype=int)
@@ -432,21 +430,23 @@ def chain_multinomial(n, p, stay_idx, rng=None, check_tol=1e-12):
         return counts
 
     # Probability of leaving given total hazard H
-    p_leave = -np.expm1(-H)
-    p_leave = min(max(p_leave, 0.0), 1.0)  # clamp for FP safety
+    p_leave = -np.expm1(-H)         
+    p_leave = min(max(p_leave, 0.0), 1.0)  # clamp for floating-point safety
 
     # Draw total exits
     exits = rng.binomial(n, p_leave)
-    counts[stay_idx] = n - exits
+    stays = n - exits
 
     if exits == 0:
+        counts[stay_idx] = n
         return counts
 
-    # Conditional probabilities across destinations q_k = h_k / H
-    q = h / H
-    # Allocate exits across destinations
-    alloc = rng.multinomial(exits, q)
+    # Split exits proportionally to hazards (stay has zero weight, so gets 0)
+    q = p / H
+    alloc = rng.multinomial(exits, q)  # alloc.sum() == exits, alloc[stay_idx] == 0
 
-    # Write back
-    counts[np.where(dest_mask)[0]] = alloc
+    # Fill output: allocated exits + residual stays
+    counts[:] = alloc
+    counts[stay_idx] = stays  # overwrite (alloc[stay_idx] is 0 anyway)
+
     return counts

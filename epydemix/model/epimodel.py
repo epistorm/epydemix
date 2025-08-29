@@ -867,10 +867,10 @@ def stochastic_simulation(T: int,
                 prob[target_idx] += trans_prob
             
             # Compute remaining probability
-            prob[source_idx] = 1 - np.sum(prob, axis=0)
+            #prob[source_idx] = 1 - np.sum(prob, axis=0)
             
             delta = np.array([
-                chain_multinomial(n, p) if n > 0 else np.zeros(C)
+                chain_multinomial(n, p, source_idx) if n > 0 else np.zeros(C)
                 for n, p in zip(current_pop, prob.T)
             ])
 
