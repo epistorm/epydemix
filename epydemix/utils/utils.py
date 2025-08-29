@@ -395,3 +395,58 @@ def combine_simulation_outputs(
     for key in combined_simulation_outputs:
         combined_simulation_outputs[key] = np.array(combined_simulation_outputs[key])
     return combined_simulation_outputs
+
+
+def chain_multinomial(n, p, stay_idx, rng=None, check_tol=1e-12):
+    """
+    Competing-risks multinomial with an explicit 'stay' category.
+
+    Args:
+        n (int): Number of individuals in the source compartment.
+        p (array-like): Length-K vector. For k != stay_idx, p[k] = r_k * dt.
+        stay_idx (int): Index of the 'stay' category.
+        rng : np.random.Generator or seed or None. If None, uses default_rng().
+
+    Returns:
+        counts (np.ndarray of int, shape (K,)): Realized counts for each category (including 'stay'), summing to n.
+    """
+    p = np.asarray(p, dtype=float)
+    K = p.size # number of categories
+    if not (0 <= stay_idx < K):
+        raise IndexError("stay_idx out of bounds.")
+    if np.any(p < -1e-16):
+        raise ValueError("All entries in p must be non-negative.")
+
+    # Aggregate total hazard H = sum of non-stay components
+    dest_mask = np.ones(K, dtype=bool)
+    dest_mask[stay_idx] = False
+    h = p[dest_mask] 
+    H = float(h.sum())
+
+    rng = np.random.default_rng(rng)
+    counts = np.zeros(K, dtype=int)
+
+    if H <= check_tol:
+        # No hazard -> everyone stays
+        counts[stay_idx] = n
+        return counts
+
+    # Probability of leaving given total hazard H
+    p_leave = -np.expm1(-H)
+    p_leave = min(max(p_leave, 0.0), 1.0)  # clamp for FP safety
+
+    # Draw total exits
+    exits = rng.binomial(n, p_leave)
+    counts[stay_idx] = n - exits
+
+    if exits == 0:
+        return counts
+
+    # Conditional probabilities across destinations q_k = h_k / H
+    q = h / H
+    # Allocate exits across destinations
+    alloc = rng.multinomial(exits, q)
+
+    # Write back
+    counts[np.where(dest_mask)[0]] = alloc
+    return counts

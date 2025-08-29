@@ -1,10 +1,9 @@
 from .transition import Transition
-from ..utils.utils import format_simulation_output, create_definitions, apply_overrides, generate_unique_string, evaluate, compute_simulation_dates, apply_initial_conditions
+from ..utils.utils import format_simulation_output, create_definitions, apply_overrides, chain_multinomial, evaluate, compute_simulation_dates, apply_initial_conditions
 from .simulation_output import Trajectory
 from .simulation_results import SimulationResults
 import numpy as np 
 import pandas as pd
-from numpy.random import multinomial
 from ..population.population import Population, load_epydemix_population
 from typing import List, Dict, Optional, Union, Any, Callable, Tuple
 import copy
@@ -871,7 +870,7 @@ def stochastic_simulation(T: int,
             prob[source_idx] = 1 - np.sum(prob, axis=0)
             
             delta = np.array([
-                multinomial(n, p) if n > 0 else np.zeros(C)
+                chain_multinomial(n, p) if n > 0 else np.zeros(C)
                 for n, p in zip(current_pop, prob.T)
             ])
 
@@ -901,9 +900,11 @@ def compute_spontaneous_transition_probability(params, data):
     if isinstance(params, str):
         env_copy = copy.deepcopy(data["parameters"])
         rate_eval = evaluate(expr=params, env=env_copy)[data["t"]]
-        return 1 - np.exp(-rate_eval * data["dt"])
+        return rate_eval * data["dt"]
+        #return 1 - np.exp(-rate_eval * data["dt"])
     else:
-        return 1 - np.exp(-params * data["dt"])   
+        return params * data["dt"]
+        #return 1 - np.exp(-params * data["dt"])   
 
 
 def compute_mediated_transition_probability(params, data): 
@@ -931,7 +932,8 @@ def compute_mediated_transition_probability(params, data):
             data["contact_matrix"]["overall"] * data["pop"][agent_idx] / data["pop_sizes"], 
             axis=1
         )
-    return 1 - np.exp(-rate_eval * interaction * data["dt"])
+    #return 1 - np.exp(-rate_eval * interaction * data["dt"])
+    return rate_eval * interaction * data["dt"]
 
 
 def validate_transition_function(func: Callable) -> None:
