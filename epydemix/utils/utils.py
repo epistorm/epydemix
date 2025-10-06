@@ -397,28 +397,54 @@ def combine_simulation_outputs(
     return combined_simulation_outputs
 
 
-def multinomial(n, p, stay_idx, mask, use_hazard_correction=True):
+def multinomial(n, p, stay_idx, mask, use_hazard_correction=True, rng=None, probs_out=None):
     """
-    Multinomial distribution with a stay compartment.
-    """
-    if use_hazard_correction == False:
-        probs = np.zeros_like(p, dtype=float)  
-        probs[mask] = p[mask] 
-        probs[stay_idx] = 1 - np.sum(p[mask])
-        return np.random.multinomial(n, probs)
-    
-    # compute total hazard
-    H = np.sum(p)
-    p_leave = -np.expm1(-H)
+    Multinomial with a 'stay' compartment (Performance-oriented).
 
+    Args:
+        n (int): number of trials
+        p (np.ndarray): array of probabilities
+        stay_idx (int): index of the stay compartment
+        mask (np.ndarray): boolean array selecting the 'leave' destinations
+        use_hazard_correction (bool): whether to use hazard correction
+        rng (np.random.Generator): random number generator
+        probs_out (np.ndarray): preallocated array for probabilities
+
+    Returns:
+        np.ndarray: array of multinomial samples
+    """
+
+    rng = np.random.default_rng() if rng is None else rng
+
+    # Early exits
+    if n <= 0:
+        out = np.zeros_like(p, dtype=int)
+        out[stay_idx] = int(n)
+        return out
+
+    # Prepare an output probs buffer 
+    probs = probs_out if probs_out is not None else np.empty_like(
+        p, dtype=(p.dtype if np.issubdtype(p.dtype, np.floating) else float)
+    )
+    probs.fill(0.0)
+
+    if not use_hazard_correction:
+        # Sum over mask without allocating p[mask]
+        mass = np.add.reduce(p, where=mask, initial=0.0, dtype=float)
+        # Write only where mask is True (no masked temp)
+        np.copyto(probs, p, where=mask)
+        probs[stay_idx] = 1.0 - mass
+        return rng.multinomial(int(n), probs)
+
+    # Hazard-corrected path
+    H = np.add.reduce(p, where=mask, initial=0.0, dtype=float)
     if H <= 0.0:
         out = np.zeros_like(p, dtype=int)
-        out[stay_idx] = n
+        out[stay_idx] = int(n)
         return out
-    
-    # Vectorized operations using the mask
-    probs = np.zeros_like(p, dtype=float)   
-    probs[mask] = p_leave * p[mask] / H
-    probs[stay_idx] = 1 - p_leave
-    
-    return np.random.multinomial(n, probs)
+
+    p_leave = -np.expm1(-H) 
+    np.multiply(p, p_leave / H, out=probs, where=mask)
+    probs[stay_idx] = 1.0 - p_leave
+
+    return rng.multinomial(int(n), probs)

@@ -651,7 +651,8 @@ class EpiModel:
                        resample_aggregation_compartments: Optional[Union[str, dict]] = "last",
                        resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
                        fill_method: Optional[str] = "ffill", 
-                       use_hazard_correction : bool = True) -> SimulationResults:
+                       use_hazard_correction : bool = True, 
+                       rng: Optional[np.random.Generator] = None) -> SimulationResults:
         """
         Simulates the epidemic model multiple times over the given time period.
 
@@ -667,6 +668,7 @@ class EpiModel:
             resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
             fill_method (str, optional): Method to fill NaN values after resampling. Default is "ffill".
             use_hazard_correction (bool, optional): Whether to use hazard correction. Default is True.
+            rng (np.random.Generator, optional): Random number generator. Default is None.
 
         Returns:
             SimulationResults: An object containing all simulation trajectories.
@@ -674,6 +676,8 @@ class EpiModel:
         Raises:
             RuntimeError: If the simulation fails.
         """
+        if rng is None:
+            rng = np.random.default_rng()
 
         # Run multiple simulations and collect trajectories
         try:
@@ -690,7 +694,8 @@ class EpiModel:
                     resample_aggregation_compartments=resample_aggregation_compartments,
                     resample_aggregation_transitions=resample_aggregation_transitions,
                     fill_method=fill_method, 
-                    use_hazard_correction=use_hazard_correction
+                    use_hazard_correction=use_hazard_correction, 
+                    rng=rng
                 )
                 trajectories.append(trajectory)
         except Exception as e:
@@ -714,6 +719,7 @@ def simulate(epimodel,
              resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
              fill_method: Optional[str] = "ffill",
              use_hazard_correction: bool = True,
+             rng: Optional[np.random.Generator] = None,
              **kwargs) -> Trajectory:
     """
     Runs a simulation of the epidemic model over the specified simulation dates.
@@ -730,6 +736,7 @@ def simulate(epimodel,
         resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
         fill_method (str, optional): The method to use when filling NaN values after resampling. Default is "ffill".
         use_hazard_correction (bool, optional): Whether to use hazard correction. Default is True.
+        rng (np.random.Generator, optional): Random number generator. Default is None.
         **kwargs: Additional parameters to overwrite model parameters during the simulation.
 
     Returns:
@@ -738,6 +745,8 @@ def simulate(epimodel,
     Raises:
         ValueError: If the model has no transitions defined.
     """
+    if rng is None:
+        rng = np.random.default_rng()
 
     # check that the model has transitions
     if len(epimodel.transitions_list) == 0:
@@ -775,7 +784,8 @@ def simulate(epimodel,
         parameters=epimodel.definitions,
         initial_conditions=initial_conditions,
         dt=dt, 
-        use_hazard_correction=use_hazard_correction
+        use_hazard_correction=use_hazard_correction, 
+        rng=rng
     )
 
     # Format the simulation output
@@ -804,7 +814,8 @@ def stochastic_simulation(T: int,
                          parameters: Dict,
                          initial_conditions: np.ndarray,
                          dt: float, 
-                         use_hazard_correction: bool = True) -> np.ndarray:
+                         use_hazard_correction: bool = True, 
+                         rng: Optional[np.random.Generator] = None) -> np.ndarray:
     """
     Run a stochastic simulation of the epidemic model.
     
@@ -816,7 +827,11 @@ def stochastic_simulation(T: int,
         initial_conditions: Initial population distribution
         dt: Time step size
         use_hazard_correction (bool, optional): Whether to use hazard correction. Default is True.
+        rng (np.random.Generator, optional): Random number generator. Default is None.
     """
+    if rng is None:
+        rng = np.random.default_rng()
+
     # Pre-allocate arrays
     N = len(epimodel.population.Nk)
     C = len(epimodel.compartments)
@@ -832,6 +847,7 @@ def stochastic_simulation(T: int,
     # Pre-allocate arrays for probabilities and transitions
     prob = np.zeros((C, N), dtype=np.float64)
     new_pop = np.zeros((C, N), dtype=np.float64)
+    probs_out = np.empty(C, dtype=np.float64)
 
     # create a dictionary to store the data needed for the transitions
     system_data = {
@@ -874,9 +890,9 @@ def stochastic_simulation(T: int,
                     tr.params, system_data
                 )
                 prob[target_idx] += trans_prob
-                        
+            
             delta = np.array([
-                multinomial(n, p, source_idx, mask, use_hazard_correction=use_hazard_correction) if n > 0 else np.zeros(C)
+                multinomial(n, p, source_idx, mask, use_hazard_correction=use_hazard_correction, rng=rng, probs_out=probs_out) if n > 0 else np.zeros(C)
                 for n, p in zip(current_pop, prob.T)
             ])
 
