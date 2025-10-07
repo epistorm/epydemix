@@ -676,11 +676,19 @@ class EpiModel:
         Raises:
             RuntimeError: If the simulation fails.
         """
+        
         if rng is None:
             rng = np.random.default_rng()
 
         # Run multiple simulations and collect trajectories
         try:
+            # Pre-compute simulation dates, initial conditions, and contact matrices to speed up the simulation
+            if initial_conditions_dict is None:
+                initial_conditions_dict = self.create_default_initial_conditions(percentage_in_agents=percentage_in_agents)
+            simulation_dates = compute_simulation_dates(start_date, end_date, dt=dt)
+            self.compute_contact_reductions(simulation_dates)
+            contact_matrices = [self.Cs[date] for date in simulation_dates]
+
             trajectories = []
             for _ in range(Nsim):
                 trajectory = simulate(
@@ -695,7 +703,9 @@ class EpiModel:
                     resample_aggregation_transitions=resample_aggregation_transitions,
                     fill_method=fill_method, 
                     use_hazard_correction=use_hazard_correction, 
-                    rng=rng
+                    rng=rng, 
+                    simulation_dates=simulation_dates,
+                    contact_matrices=contact_matrices
                 )
                 trajectories.append(trajectory)
         except Exception as e:
@@ -720,6 +730,8 @@ def simulate(epimodel,
              fill_method: Optional[str] = "ffill",
              use_hazard_correction: bool = True,
              rng: Optional[np.random.Generator] = None,
+             contact_matrices: Optional[List[Dict[str, np.ndarray]]] = None,
+             simulation_dates: Optional[List[pd.Timestamp]] = None,
              **kwargs) -> Trajectory:
     """
     Runs a simulation of the epidemic model over the specified simulation dates.
@@ -737,6 +749,8 @@ def simulate(epimodel,
         fill_method (str, optional): The method to use when filling NaN values after resampling. Default is "ffill".
         use_hazard_correction (bool, optional): Whether to use hazard correction. Default is True.
         rng (np.random.Generator, optional): Random number generator. Default is None.
+        contact_matrices (list, optional): A list of contact matrices for the simulation. Default is None.
+        simulation_dates (list, optional): A list of simulation dates. Default is None.
         **kwargs: Additional parameters to overwrite model parameters during the simulation.
 
     Returns:
@@ -752,15 +766,18 @@ def simulate(epimodel,
     if len(epimodel.transitions_list) == 0:
         raise ValueError("The model has no transitions defined. Please add transitions before running simulations.")
     
-    # Compute the simulation dates
-    simulation_dates = compute_simulation_dates(start_date, end_date, dt=dt)
+    # Compute the simulation dates if not provided
+    if simulation_dates is None:
+        simulation_dates = compute_simulation_dates(start_date, end_date, dt=dt)
 
-    # Compute initial conditions if needed
+    # Compute initial conditions if not provided
     if initial_conditions_dict is None:
         initial_conditions_dict = epimodel.create_default_initial_conditions(percentage_in_agents=percentage_in_agents)
         
-    # Compute the contact reductions based on the interventions
-    epimodel.compute_contact_reductions(simulation_dates)
+    # Compute the contact reductions based on the interventions if not provided
+    if contact_matrices is None:
+        epimodel.compute_contact_reductions(simulation_dates)
+        contact_matrices = [epimodel.Cs[date] for date in simulation_dates]
 
     # Update parameters if any are provided via kwargs (needed for calibration purposes)
     parameters = epimodel.parameters.copy()
@@ -773,9 +790,6 @@ def simulate(epimodel,
     # Initialize population in different compartments and demographic groups
     initial_conditions = apply_initial_conditions(epimodel, initial_conditions_dict)
 
-    # Pre-compute contact matrices list
-    contact_matrices = [epimodel.Cs[date] for date in simulation_dates]
-    
     # Run simulation with pre-computed contacts
     compartments_evolution, transitions_evolution = stochastic_simulation(
         T=len(simulation_dates),

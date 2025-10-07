@@ -198,10 +198,8 @@ def apply_overrides(
     for name, overrides in overrides.items():
         if name not in definitions:
             continue
-        #values = definitions[name]
+        
         for override in overrides:
-            #start_date = str_to_date(override["start_date"])
-            #end_date = str_to_date(override["end_date"])
             start_date = pd.Timestamp(override["start_date"])
             end_date = pd.Timestamp(override["end_date"])
             override_value = override["value"]
@@ -209,17 +207,14 @@ def apply_overrides(
             # Convert dates to pandas timestamps for comparison
             dates_pd = pd.DatetimeIndex(dates)
 
-            # validate override value
+            # Validate override value
             T = sum((dates_pd >= start_date) & (dates_pd <= end_date))
             n_age = definitions[name].shape[1]
             validate_parameter_shape(name, override_value, T=T, n_age=n_age)
 
-            # resize override value
+            # Resize override value
             override_array = resize_parameter(override_value, T=T, n_age=n_age)
 
-            # override
-            #override_idxs = [i for i, date in enumerate(dates) if start_date <= date.date() <= end_date]
-            #values[override_idxs] = override_value
             # Apply override
             mask = (dates_pd >= start_date) & (dates_pd <= end_date)
             result[name][mask] = override_array
