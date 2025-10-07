@@ -67,6 +67,8 @@ We provide a series of tutorials to help you get started with **epydemix**.
 - [Tutorial 5](https://github.com/epistorm/epydemix/blob/main/tutorials/5_Model_Calibration_part2.ipynb): Model Calibration with ABC (Part 2)
 - [Tutorial 6](https://github.com/epistorm/epydemix/blob/main/tutorials/6_Advanced_Modeling_Features.ipynb): Advanced Modeling Features
 - [Tutorial 7](https://github.com/epistorm/epydemix/blob/main/tutorials/7_Covid-19_Example.ipynb): COVID-19 Case Study
+- [Tutorial 8](https://github.com/epistorm/epydemix/blob/main/tutorials/8_Multiple_Strains.ipynb): Modeling Multiple Strains
+- [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/9_Vaccinations.ipynb): Modeling Vaccinations
 
 ---
 ## Epydemix Data
