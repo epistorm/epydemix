@@ -443,3 +443,16 @@ def multinomial(n, p, stay_idx, mask, use_hazard_correction=True, rng=None, prob
     probs[stay_idx] = 1.0 - p_leave
 
     return rng.multinomial(int(n), probs)
+
+
+def get_initial_conditions_dict(Nk, perc_dict): 
+    """
+    Helper function to get initial conditions dictionary from percentage dictionary.
+
+    Args:
+        perc_dict (dict): Dictionary with percentage of population for each compartment
+
+    Returns:
+        dict: Initial conditions dictionary
+    """
+    return {key: (Nk * perc_dict[key] / 100).astype(int) for key in perc_dict.keys()}
