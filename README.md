@@ -60,15 +60,15 @@ plot_quantiles(df_quantiles, columns=["I_total", "S_total", "R_total"])
 ### Tutorials
 We provide a series of tutorials to help you get started with **epydemix**.
 
-- [Tutorial 1](https://github.com/epistorm/epydemix/blob/main/tutorials/1_Model_Definition_and_Simulation.ipynb): An Introduction to Model Definition and Simulation
-- [Tutorial 2](https://github.com/epistorm/epydemix/blob/main/tutorials/2_Modeling_with_Population_Data.ipynb): Using Population Data from Epydemix Data
-- [Tutorial 3](https://github.com/epistorm/epydemix/blob/main/tutorials/3_Modeling_Interventions.ipynb): Modeling Non-pharmaceutical Interventions
-- [Tutorial 4](https://github.com/epistorm/epydemix/blob/main/tutorials/4_Model_Calibration_part1.ipynb): Model Calibration with ABC (Part 1)
-- [Tutorial 5](https://github.com/epistorm/epydemix/blob/main/tutorials/5_Model_Calibration_part2.ipynb): Model Calibration with ABC (Part 2)
-- [Tutorial 6](https://github.com/epistorm/epydemix/blob/main/tutorials/6_Advanced_Modeling_Features.ipynb): Advanced Modeling Features
-- [Tutorial 7](https://github.com/epistorm/epydemix/blob/main/tutorials/7_Covid-19_Example.ipynb): COVID-19 Case Study
-- [Tutorial 8](https://github.com/epistorm/epydemix/blob/main/tutorials/8_Multiple_Strains.ipynb): Modeling Multiple Strains
-- [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/9_Vaccinations.ipynb): Modeling Vaccinations
+- [Tutorial 1](https://github.com/epistorm/epydemix/blob/main/tutorials/01_Model_Definition_and_Simulation.ipynb): An Introduction to Model Definition and Simulation
+- [Tutorial 2](https://github.com/epistorm/epydemix/blob/main/tutorials/02_Modeling_with_Population_Data.ipynb): Using Population Data from Epydemix Data
+- [Tutorial 3](https://github.com/epistorm/epydemix/blob/main/tutorials/03_Modeling_Interventions.ipynb): Modeling Non-pharmaceutical Interventions
+- [Tutorial 4](https://github.com/epistorm/epydemix/blob/main/tutorials/04_Model_Calibration_part1.ipynb): Model Calibration with ABC (Part 1)
+- [Tutorial 5](https://github.com/epistorm/epydemix/blob/main/tutorials/05_Model_Calibration_part2.ipynb): Model Calibration with ABC (Part 2)
+- [Tutorial 6](https://github.com/epistorm/epydemix/blob/main/tutorials/06_Advanced_Modeling_Features.ipynb): Advanced Modeling Features
+- [Tutorial 7](https://github.com/epistorm/epydemix/blob/main/tutorials/07_Covid-19_Example.ipynb): COVID-19 Case Study
+- [Tutorial 8](https://github.com/epistorm/epydemix/blob/main/tutorials/08_Multiple_Strains.ipynb): Modeling Multiple Strains
+- [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/09_Vaccinations.ipynb): Modeling Vaccinations
 - [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations with Multiprocessing
 
 ---
