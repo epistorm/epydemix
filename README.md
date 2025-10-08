@@ -69,7 +69,7 @@ We provide a series of tutorials to help you get started with **epydemix**.
 - [Tutorial 7](https://github.com/epistorm/epydemix/blob/main/tutorials/07_Covid-19_Example.ipynb): COVID-19 Case Study
 - [Tutorial 8](https://github.com/epistorm/epydemix/blob/main/tutorials/08_Multiple_Strains.ipynb): Modeling Multiple Strains
 - [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/09_Vaccinations.ipynb): Modeling Vaccinations
-- [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations with Multiprocessing
+- [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations and Calibration with Multiprocessing
 
 ---
 ## Epydemix Data
