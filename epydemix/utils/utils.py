@@ -392,16 +392,18 @@ def combine_simulation_outputs(
     return combined_simulation_outputs
 
 
-def multinomial(n, p, stay_idx, mask, use_hazard_correction=True, rng=None, probs_out=None):
+def multinomial(n, rates, stay_idx, mask, dt, apply_linear_approximation=False, rng=None, probs_out=None):
     """
-    Multinomial with a 'stay' compartment (Performance-oriented).
+    Multinomial sample with a 'stay' compartment (Performance-oriented). 
+    Rates are converted to probabilities using the time step size.
 
     Args:
         n (int): number of trials
-        p (np.ndarray): array of probabilities
+        rates (np.ndarray): array of rates
         stay_idx (int): index of the stay compartment
         mask (np.ndarray): boolean array selecting the 'leave' destinations
-        use_hazard_correction (bool): whether to use hazard correction
+        dt (float): time step size
+        apply_linear_approximation (bool): whether to apply a linear approximation to the probabilities
         rng (np.random.Generator): random number generator
         probs_out (np.ndarray): preallocated array for probabilities
 
@@ -413,9 +415,12 @@ def multinomial(n, p, stay_idx, mask, use_hazard_correction=True, rng=None, prob
 
     # Early exits
     if n <= 0:
-        out = np.zeros_like(p, dtype=int)
+        out = np.zeros_like(rates, dtype=int)
         out[stay_idx] = int(n)
         return out
+    
+    # Convert rates to probabilities
+    p = rates * dt
 
     # Prepare an output probs buffer 
     probs = probs_out if probs_out is not None else np.empty_like(
@@ -423,7 +428,8 @@ def multinomial(n, p, stay_idx, mask, use_hazard_correction=True, rng=None, prob
     )
     probs.fill(0.0)
 
-    if not use_hazard_correction:
+    # Linear approximation
+    if apply_linear_approximation:
         # Sum over mask without allocating p[mask]
         mass = np.add.reduce(p, where=mask, initial=0.0, dtype=float)
         # Write only where mask is True (no masked temp)
@@ -431,7 +437,6 @@ def multinomial(n, p, stay_idx, mask, use_hazard_correction=True, rng=None, prob
         probs[stay_idx] = 1.0 - mass
         return rng.multinomial(int(n), probs)
 
-    # Hazard-corrected path
     H = np.add.reduce(p, where=mask, initial=0.0, dtype=float)
     if H <= 0.0:
         out = np.zeros_like(p, dtype=int)

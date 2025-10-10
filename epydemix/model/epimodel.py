@@ -96,9 +96,9 @@ class EpiModel:
                 use_default_population
             )
 
-            # Initalize functions to compute transition probabilities
-            self.register_transition_kind(kind="spontaneous", function=compute_spontaneous_transition_probability)
-            self.register_transition_kind(kind="mediated", function=compute_mediated_transition_probability)
+            # Initalize functions to compute transition rates
+            self.register_transition_kind(kind="spontaneous", function=compute_spontaneous_transition_rate)
+            self.register_transition_kind(kind="mediated", function=compute_mediated_transition_rate)
 
 
     def __repr__(self) -> str:
@@ -416,7 +416,7 @@ class EpiModel:
 
     def register_transition_kind(self, kind: str, function: Callable):
         """
-        Registers a transition function for a given kind of transition.
+        Registers a new transition kind providing a function to compute the rate of the transition.
 
         Args:
             kind (str): The kind of transition (e.g., spontaneous or mediated).
@@ -427,7 +427,6 @@ class EpiModel:
         """
         validate_transition_function(function)
         self.transition_functions[kind] = function
-
 
     @property
     def n_transitions(self) -> int:
@@ -651,7 +650,7 @@ class EpiModel:
                        resample_aggregation_compartments: Optional[Union[str, dict]] = "last",
                        resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
                        fill_method: Optional[str] = "ffill", 
-                       use_hazard_correction : bool = True, 
+                       apply_linear_approximation: bool = False, 
                        rng: Optional[np.random.Generator] = None) -> SimulationResults:
         """
         Simulates the epidemic model multiple times over the given time period.
@@ -667,7 +666,7 @@ class EpiModel:
             resample_aggregation_compartments (str, optional): The aggregation method to use when resampling the compartments. Default is "last".
             resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
             fill_method (str, optional): Method to fill NaN values after resampling. Default is "ffill".
-            use_hazard_correction (bool, optional): Whether to use hazard correction. Default is True.
+            apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
             rng (np.random.Generator, optional): Random number generator. Default is None.
 
         Returns:
@@ -728,7 +727,7 @@ def simulate(epimodel,
              resample_aggregation_compartments: Optional[Union[str, dict]] = "last",
              resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
              fill_method: Optional[str] = "ffill",
-             use_hazard_correction: bool = True,
+             apply_linear_approximation: bool = False,
              rng: Optional[np.random.Generator] = None,
              contact_matrices: Optional[List[Dict[str, np.ndarray]]] = None,
              simulation_dates: Optional[List[pd.Timestamp]] = None,
@@ -747,7 +746,7 @@ def simulate(epimodel,
         resample_aggregation_compartments (str, optional): The aggregation method to use when resampling the compartments. Default is "last".
         resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
         fill_method (str, optional): The method to use when filling NaN values after resampling. Default is "ffill".
-        use_hazard_correction (bool, optional): Whether to use hazard correction. Default is True.
+        apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
         rng (np.random.Generator, optional): Random number generator. Default is None.
         contact_matrices (list, optional): A list of contact matrices for the simulation. Default is None.
         simulation_dates (list, optional): A list of simulation dates. Default is None.
@@ -798,7 +797,7 @@ def simulate(epimodel,
         parameters=epimodel.definitions,
         initial_conditions=initial_conditions,
         dt=dt, 
-        use_hazard_correction=use_hazard_correction, 
+        apply_linear_approximation=apply_linear_approximation, 
         rng=rng
     )
 
@@ -828,7 +827,7 @@ def stochastic_simulation(T: int,
                          parameters: Dict,
                          initial_conditions: np.ndarray,
                          dt: float, 
-                         use_hazard_correction: bool = True, 
+                         apply_linear_approximation: bool = False, 
                          rng: Optional[np.random.Generator] = None) -> np.ndarray:
     """
     Run a stochastic simulation of the epidemic model.
@@ -840,7 +839,7 @@ def stochastic_simulation(T: int,
         parameters: Model parameters
         initial_conditions: Initial population distribution
         dt: Time step size
-        use_hazard_correction (bool, optional): Whether to use hazard correction. Default is True.
+        apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
         rng (np.random.Generator, optional): Random number generator. Default is None.
     """
     if rng is None:
@@ -858,8 +857,8 @@ def stochastic_simulation(T: int,
     pop_sizes = epimodel.population.Nk
     comp_indices = epimodel.compartments_idx
     
-    # Pre-allocate arrays for probabilities and transitions
-    prob = np.zeros((C, N), dtype=np.float64)
+    # Pre-allocate arrays for rates and transitions
+    rates = np.zeros((C, N), dtype=np.float64)
     new_pop = np.zeros((C, N), dtype=np.float64)
     probs_out = np.empty(C, dtype=np.float64)
 
@@ -890,24 +889,24 @@ def stochastic_simulation(T: int,
             if not transitions: 
                 continue
                 
-            prob.fill(0)
+            rates.fill(0)
             source_idx = comp_indices[comp]
             current_pop = compartments_evolution[t, source_idx]
-            mask = np.arange(prob.shape[0]) != source_idx
+            mask = np.arange(rates.shape[0]) != source_idx
 
             if not np.any(current_pop):
                 continue
 
             for tr in transitions:
                 target_idx = comp_indices[tr.target]
-                trans_prob = epimodel.transition_functions[tr.kind](
+                trans_rate = epimodel.transition_functions[tr.kind](
                     tr.params, system_data
                 )
-                prob[target_idx] += trans_prob
+                rates[target_idx] += trans_rate
             
             delta = np.array([
-                multinomial(n, p, source_idx, mask, use_hazard_correction=use_hazard_correction, rng=rng, probs_out=probs_out) if n > 0 else np.zeros(C)
-                for n, p in zip(current_pop, prob.T)
+                multinomial(n, r, source_idx, mask, dt, apply_linear_approximation=apply_linear_approximation, rng=rng, probs_out=probs_out) if n > 0 else np.zeros(C)
+                for n, r in zip(current_pop, rates.T)
             ])
 
             # Store transition counts
@@ -925,28 +924,32 @@ def stochastic_simulation(T: int,
     return compartments_evolution[1:], transitions_evolution
 
 
-def compute_spontaneous_transition_probability(params, data): 
+def compute_spontaneous_transition_rate(params, data): 
     """
-    Compute the probability of a spontaneous transition.
+    Compute the rate of a spontaneous transition.
 
     Args:
-        params: The parameters of the transition
-        data: The data needed for the transition
+        params: The parameters of the transition provided by the user.
+        data: A dictionary containing the data needed for the transition. 
+            - parameters: The model parameters
+            - t: The current time step
+    Returns:
+        The rate of the transition
     """
     if isinstance(params, str):
         env_copy = copy.deepcopy(data["parameters"])
         rate_eval = evaluate(expr=params, env=env_copy)[data["t"]]
-        return rate_eval * data["dt"]
+        return rate_eval
     else:
-        return params * data["dt"]
+        return params
 
 
-def compute_mediated_transition_probability(params, data): 
+def compute_mediated_transition_rate(params, data): 
     """
-    Compute the probability of a mediated transition.
+    Compute the rate of a mediated transition.
 
     Args:
-        params: The parameters of the transition. params["agent"] is the agent compartment
+        params: The parameters of the transition provided by the user.
         data: A dictionary containing the data needed for the transition. 
             - parameters: The model parameters
             - t: The current time step
@@ -954,7 +957,6 @@ def compute_mediated_transition_probability(params, data):
             - contact_matrix: The contact matrix
             - pop: The population in different compartments
             - pop_sizes: The population sizes
-            - dt: The time step size
     """
     if isinstance(params[0], str):
         env_copy = copy.deepcopy(data["parameters"])
@@ -966,15 +968,15 @@ def compute_mediated_transition_probability(params, data):
             data["contact_matrix"]["overall"] * data["pop"][agent_idx] / data["pop_sizes"], 
             axis=1
         )
-    return rate_eval * interaction * data["dt"]
+    return rate_eval * interaction
 
 
 def validate_transition_function(func: Callable) -> None:
     """
-    Validates that a transition function has the correct signature and parameters.
+    Validates that a transition rate function has the correct signature and parameters.
     
     Args:
-        func: The transition function to validate
+        func: The transition rate function to validate
         
     Raises:
         ValueError: If the function signature doesn't match requirements
