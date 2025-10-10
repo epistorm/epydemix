@@ -701,7 +701,7 @@ class EpiModel:
                     resample_aggregation_compartments=resample_aggregation_compartments,
                     resample_aggregation_transitions=resample_aggregation_transitions,
                     fill_method=fill_method, 
-                    use_hazard_correction=use_hazard_correction, 
+                    apply_linear_approximation=apply_linear_approximation, 
                     rng=rng, 
                     simulation_dates=simulation_dates,
                     contact_matrices=contact_matrices
