@@ -12,10 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### [Unreleased]
 ### Added
 
-* Custom multinomial sampling implementation: replaces `numpy.random.multinomial()` to improve the calculation of transition probabilities when hazard correction is applied.
+* Custom multinomial sampling implementation: replaces `numpy.random.multinomial()` to improve the calculation of transition probabilities.
 
-  * Users can enable or disable hazard correction using the `use_hazard_correction` argument in `simulate()` and `EpiModel.run_simulations()`.
-  * Transition probability functions now return *rates* instead of *risks*, as the conversion is automatically handled during multinomial sampling.
+  * Transition rate functions now return *rates* instead of *risks*, as the conversion is automatically handled during multinomial sampling.
+  * Users can enable linear approximation to the probabilities using the `apply_linear_approximation` argument in `simulate()` and `EpiModel.run_simulations()`.
+  
 * Support for reproducible random generation: both `simulate()` and `EpiModel.run_simulations()` now include an `rng` argument accepting a `numpy.random.Generator` object.
 
   * By default, it is set to `None`, in which case `numpy.random.default_rng()` is used.
@@ -27,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-* Internal handling of transition probability functions adjusted to reflect the new multinomial sampling mechanism (e.g., `compute_mediated_transition_probability()` and `compute_spontaneous_transition_probability()`). Advanced users defining custom transition types should review their probability functions accordingly.
+* Internal handling of transition rate functions adjusted to reflect the new multinomial sampling mechanism (e.g., `compute_mediated_transition_rate()` and `compute_spontaneous_transition_rate()`). Advanced users defining custom transition types should review their rate functions accordingly.
 
 ### Tutorials
 
@@ -39,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Data
 
-* (TODO) Updated U.S. national and state population data in the **epydemix_data** repository using the latest ACS Community Survey estimates.
+* Updated U.S. national and state population data in the **epydemix_data** repository using the more recent estimates from the U.S. Census Bureau.
 
 ### Compatibility
 
