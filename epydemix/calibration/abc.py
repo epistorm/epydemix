@@ -497,7 +497,6 @@ class ABCSampler:
         projections, posterior_samples = [], {}
         for _ in range(iterations):
             # Sample from posterior according to weights
-            #idx = np.random.randint(0, len(posterior))
             idx = np.random.choice(len(posterior), p=weights / weights.sum())
             posterior_sample = posterior.iloc[idx]
 
