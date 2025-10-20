@@ -285,7 +285,7 @@ class ABCSampler:
         if verbose:
             print(f"Starting ABC top fraction selection with {Nsim} simulations and top {top_fraction*100:.1f}% selected")
         
-        for _ in range(Nsim):
+        for n in range(Nsim):
             params = self._sample_parameters()
             simulation = self._run_simulation(params)
             distance = self.distance_function(self.observed_data, simulation)
@@ -295,10 +295,10 @@ class ABCSampler:
             for i, p in enumerate(self.param_names):
                 sampled_params[p].append(params[i])
 
-        # Print progress every 10% if verbose
-        if verbose and (i + 1) % max(1, Nsim // 10) == 0:
-            print(f"\tProgress: {i + 1}/{Nsim} simulations completed ({(i + 1)/Nsim*100:.1f}%)")
-            
+            # Print progress every 10% if verbose
+            if verbose and (n + 1) % max(1, Nsim // 10) == 0:
+                print(f"\tProgress: {n + 1}/{Nsim} simulations completed ({(n + 1)/Nsim*100:.1f}%)")
+
         # Select top fraction
         threshold = np.quantile(distances, top_fraction)
         mask = np.array(distances) <= threshold
