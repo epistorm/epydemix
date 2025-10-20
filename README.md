@@ -71,6 +71,8 @@ We provide a series of tutorials to help you get started with **epydemix**.
 - [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/09_Vaccinations.ipynb): Modeling Vaccinations
 - [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations and Calibration with Multiprocessing
 
+You can run all tutorials directly in Google Colab — just open any notebook in the [tutorials](./tutorials) folder and click the **“Open in Colab”** button at the top.
+
 ---
 ## Epydemix Data
 
@@ -118,6 +120,20 @@ To reference our work, please use the following citation:
 ## License
 
 This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for more details.
+
+---
+## Contributors
+
+Contributions are welcome! Please open issues or pull requests on GitHub.
+
+<a href="https://github.com/epistorm/epydemix/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=epistorm/epydemix" />
+</a>
+
+---
+## Changelog
+
+See the [CHANGELOG](./CHANGELOG.md) file for details on past releases and updates.
 
 ---
 ## Contact
