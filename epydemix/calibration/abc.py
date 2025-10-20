@@ -489,14 +489,15 @@ class ABCSampler:
             CalibrationResults: A new CalibrationResults object containing the original results plus the new projections
         """
         
-        # Get posterior distribution from specified generation
+        # Get posterior distribution and weights from specified generation
         posterior = self.results.get_posterior_distribution(generation)
+        weights = self.results.get_weights(generation)
         
         # Run projections and store results
         projections, posterior_samples = [], {}
         for _ in range(iterations):
-            # Sample from posterior
-            idx = np.random.randint(0, len(posterior))
+            # Sample from posterior according to weights
+            idx = np.random.choice(len(posterior), p=weights / weights.sum())
             posterior_sample = posterior.iloc[idx]
 
             for k in posterior_sample.keys():

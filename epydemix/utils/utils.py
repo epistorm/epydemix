@@ -198,10 +198,8 @@ def apply_overrides(
     for name, overrides in overrides.items():
         if name not in definitions:
             continue
-        #values = definitions[name]
+        
         for override in overrides:
-            #start_date = str_to_date(override["start_date"])
-            #end_date = str_to_date(override["end_date"])
             start_date = pd.Timestamp(override["start_date"])
             end_date = pd.Timestamp(override["end_date"])
             override_value = override["value"]
@@ -209,17 +207,14 @@ def apply_overrides(
             # Convert dates to pandas timestamps for comparison
             dates_pd = pd.DatetimeIndex(dates)
 
-            # validate override value
+            # Validate override value
             T = sum((dates_pd >= start_date) & (dates_pd <= end_date))
             n_age = definitions[name].shape[1]
             validate_parameter_shape(name, override_value, T=T, n_age=n_age)
 
-            # resize override value
+            # Resize override value
             override_array = resize_parameter(override_value, T=T, n_age=n_age)
 
-            # override
-            #override_idxs = [i for i, date in enumerate(dates) if start_date <= date.date() <= end_date]
-            #values[override_idxs] = override_value
             # Apply override
             mask = (dates_pd >= start_date) & (dates_pd <= end_date)
             result[name][mask] = override_array
@@ -395,3 +390,74 @@ def combine_simulation_outputs(
     for key in combined_simulation_outputs:
         combined_simulation_outputs[key] = np.array(combined_simulation_outputs[key])
     return combined_simulation_outputs
+
+
+def multinomial(n, rates, stay_idx, mask, dt, apply_linear_approximation=False, rng=None, probs_out=None):
+    """
+    Multinomial sample with a 'stay' compartment (Performance-oriented). 
+    Rates are converted to probabilities using the time step size.
+
+    Args:
+        n (int): number of trials
+        rates (np.ndarray): array of rates
+        stay_idx (int): index of the stay compartment
+        mask (np.ndarray): boolean array selecting the 'leave' destinations
+        dt (float): time step size
+        apply_linear_approximation (bool): whether to apply a linear approximation to the probabilities
+        rng (np.random.Generator): random number generator
+        probs_out (np.ndarray): preallocated array for probabilities
+
+    Returns:
+        np.ndarray: array of multinomial samples
+    """
+
+    rng = np.random.default_rng() if rng is None else rng
+
+    # Early exits
+    if n <= 0:
+        out = np.zeros_like(rates, dtype=int)
+        out[stay_idx] = int(n)
+        return out
+    
+    # Convert rates to probabilities
+    p = rates * dt
+
+    # Prepare an output probs buffer 
+    probs = probs_out if probs_out is not None else np.empty_like(
+        p, dtype=(p.dtype if np.issubdtype(p.dtype, np.floating) else float)
+    )
+    probs.fill(0.0)
+
+    # Linear approximation
+    if apply_linear_approximation:
+        # Sum over mask without allocating p[mask]
+        mass = np.add.reduce(p, where=mask, initial=0.0, dtype=float)
+        # Write only where mask is True (no masked temp)
+        np.copyto(probs, p, where=mask)
+        probs[stay_idx] = 1.0 - mass
+        return rng.multinomial(int(n), probs)
+
+    H = np.add.reduce(p, where=mask, initial=0.0, dtype=float)
+    if H <= 0.0:
+        out = np.zeros_like(p, dtype=int)
+        out[stay_idx] = int(n)
+        return out
+
+    p_leave = -np.expm1(-H) 
+    np.multiply(p, p_leave / H, out=probs, where=mask)
+    probs[stay_idx] = 1.0 - p_leave
+
+    return rng.multinomial(int(n), probs)
+
+
+def get_initial_conditions_dict(Nk, perc_dict): 
+    """
+    Helper function to get initial conditions dictionary from percentage dictionary.
+
+    Args:
+        perc_dict (dict): Dictionary with percentage of population for each compartment
+
+    Returns:
+        dict: Initial conditions dictionary
+    """
+    return {key: (Nk * perc_dict[key] / 100).astype(int) for key in perc_dict.keys()}

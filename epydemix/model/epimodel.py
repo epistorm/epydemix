@@ -1,10 +1,9 @@
 from .transition import Transition
-from ..utils.utils import format_simulation_output, create_definitions, apply_overrides, generate_unique_string, evaluate, compute_simulation_dates, apply_initial_conditions
+from ..utils.utils import format_simulation_output, create_definitions, apply_overrides, evaluate, compute_simulation_dates, apply_initial_conditions, multinomial
 from .simulation_output import Trajectory
 from .simulation_results import SimulationResults
 import numpy as np 
 import pandas as pd
-from numpy.random import multinomial
 from ..population.population import Population, load_epydemix_population
 from typing import List, Dict, Optional, Union, Any, Callable, Tuple
 import copy
@@ -97,9 +96,9 @@ class EpiModel:
                 use_default_population
             )
 
-            # Initalize functions to compute transition probabilities
-            self.register_transition_kind(kind="spontaneous", function=compute_spontaneous_transition_probability)
-            self.register_transition_kind(kind="mediated", function=compute_mediated_transition_probability)
+            # Initalize functions to compute transition rates
+            self.register_transition_kind(kind="spontaneous", function=compute_spontaneous_transition_rate)
+            self.register_transition_kind(kind="mediated", function=compute_mediated_transition_rate)
 
 
     def __repr__(self) -> str:
@@ -417,7 +416,7 @@ class EpiModel:
 
     def register_transition_kind(self, kind: str, function: Callable):
         """
-        Registers a transition function for a given kind of transition.
+        Registers a new transition kind providing a function to compute the rate of the transition.
 
         Args:
             kind (str): The kind of transition (e.g., spontaneous or mediated).
@@ -428,7 +427,6 @@ class EpiModel:
         """
         validate_transition_function(function)
         self.transition_functions[kind] = function
-
 
     @property
     def n_transitions(self) -> int:
@@ -651,7 +649,9 @@ class EpiModel:
                        resample_frequency: Optional[str] = "D",
                        resample_aggregation_compartments: Optional[Union[str, dict]] = "last",
                        resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
-                       fill_method: Optional[str] = "ffill") -> SimulationResults:
+                       fill_method: Optional[str] = "ffill", 
+                       apply_linear_approximation: bool = False, 
+                       rng: Optional[np.random.Generator] = None) -> SimulationResults:
         """
         Simulates the epidemic model multiple times over the given time period.
 
@@ -666,6 +666,8 @@ class EpiModel:
             resample_aggregation_compartments (str, optional): The aggregation method to use when resampling the compartments. Default is "last".
             resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
             fill_method (str, optional): Method to fill NaN values after resampling. Default is "ffill".
+            apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
+            rng (np.random.Generator, optional): Random number generator. Default is None.
 
         Returns:
             SimulationResults: An object containing all simulation trajectories.
@@ -674,8 +676,18 @@ class EpiModel:
             RuntimeError: If the simulation fails.
         """
         
+        if rng is None:
+            rng = np.random.default_rng()
+
         # Run multiple simulations and collect trajectories
         try:
+            # Pre-compute simulation dates, initial conditions, and contact matrices to speed up the simulation
+            if initial_conditions_dict is None:
+                initial_conditions_dict = self.create_default_initial_conditions(percentage_in_agents=percentage_in_agents)
+            simulation_dates = compute_simulation_dates(start_date, end_date, dt=dt)
+            self.compute_contact_reductions(simulation_dates)
+            contact_matrices = [self.Cs[date] for date in simulation_dates]
+
             trajectories = []
             for _ in range(Nsim):
                 trajectory = simulate(
@@ -688,7 +700,11 @@ class EpiModel:
                     resample_frequency=resample_frequency,
                     resample_aggregation_compartments=resample_aggregation_compartments,
                     resample_aggregation_transitions=resample_aggregation_transitions,
-                    fill_method=fill_method
+                    fill_method=fill_method, 
+                    apply_linear_approximation=apply_linear_approximation, 
+                    rng=rng, 
+                    simulation_dates=simulation_dates,
+                    contact_matrices=contact_matrices
                 )
                 trajectories.append(trajectory)
         except Exception as e:
@@ -711,6 +727,10 @@ def simulate(epimodel,
              resample_aggregation_compartments: Optional[Union[str, dict]] = "last",
              resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
              fill_method: Optional[str] = "ffill",
+             apply_linear_approximation: bool = False,
+             rng: Optional[np.random.Generator] = None,
+             contact_matrices: Optional[List[Dict[str, np.ndarray]]] = None,
+             simulation_dates: Optional[List[pd.Timestamp]] = None,
              **kwargs) -> Trajectory:
     """
     Runs a simulation of the epidemic model over the specified simulation dates.
@@ -726,6 +746,10 @@ def simulate(epimodel,
         resample_aggregation_compartments (str, optional): The aggregation method to use when resampling the compartments. Default is "last".
         resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
         fill_method (str, optional): The method to use when filling NaN values after resampling. Default is "ffill".
+        apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
+        rng (np.random.Generator, optional): Random number generator. Default is None.
+        contact_matrices (list, optional): A list of contact matrices for the simulation. Default is None.
+        simulation_dates (list, optional): A list of simulation dates. Default is None.
         **kwargs: Additional parameters to overwrite model parameters during the simulation.
 
     Returns:
@@ -734,20 +758,25 @@ def simulate(epimodel,
     Raises:
         ValueError: If the model has no transitions defined.
     """
+    if rng is None:
+        rng = np.random.default_rng()
 
     # check that the model has transitions
     if len(epimodel.transitions_list) == 0:
         raise ValueError("The model has no transitions defined. Please add transitions before running simulations.")
     
-    # Compute the simulation dates
-    simulation_dates = compute_simulation_dates(start_date, end_date, dt=dt)
+    # Compute the simulation dates if not provided
+    if simulation_dates is None:
+        simulation_dates = compute_simulation_dates(start_date, end_date, dt=dt)
 
-    # Compute initial conditions if needed
+    # Compute initial conditions if not provided
     if initial_conditions_dict is None:
         initial_conditions_dict = epimodel.create_default_initial_conditions(percentage_in_agents=percentage_in_agents)
         
-    # Compute the contact reductions based on the interventions
-    epimodel.compute_contact_reductions(simulation_dates)
+    # Compute the contact reductions based on the interventions if not provided
+    if contact_matrices is None:
+        epimodel.compute_contact_reductions(simulation_dates)
+        contact_matrices = [epimodel.Cs[date] for date in simulation_dates]
 
     # Update parameters if any are provided via kwargs (needed for calibration purposes)
     parameters = epimodel.parameters.copy()
@@ -760,9 +789,6 @@ def simulate(epimodel,
     # Initialize population in different compartments and demographic groups
     initial_conditions = apply_initial_conditions(epimodel, initial_conditions_dict)
 
-    # Pre-compute contact matrices list
-    contact_matrices = [epimodel.Cs[date] for date in simulation_dates]
-    
     # Run simulation with pre-computed contacts
     compartments_evolution, transitions_evolution = stochastic_simulation(
         T=len(simulation_dates),
@@ -770,7 +796,9 @@ def simulate(epimodel,
         epimodel=epimodel,
         parameters=epimodel.definitions,
         initial_conditions=initial_conditions,
-        dt=dt
+        dt=dt, 
+        apply_linear_approximation=apply_linear_approximation, 
+        rng=rng
     )
 
     # Format the simulation output
@@ -798,7 +826,9 @@ def stochastic_simulation(T: int,
                          epimodel,
                          parameters: Dict,
                          initial_conditions: np.ndarray,
-                         dt: float) -> np.ndarray:
+                         dt: float, 
+                         apply_linear_approximation: bool = False, 
+                         rng: Optional[np.random.Generator] = None) -> np.ndarray:
     """
     Run a stochastic simulation of the epidemic model.
     
@@ -809,7 +839,12 @@ def stochastic_simulation(T: int,
         parameters: Model parameters
         initial_conditions: Initial population distribution
         dt: Time step size
+        apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
+        rng (np.random.Generator, optional): Random number generator. Default is None.
     """
+    if rng is None:
+        rng = np.random.default_rng()
+
     # Pre-allocate arrays
     N = len(epimodel.population.Nk)
     C = len(epimodel.compartments)
@@ -822,9 +857,10 @@ def stochastic_simulation(T: int,
     pop_sizes = epimodel.population.Nk
     comp_indices = epimodel.compartments_idx
     
-    # Pre-allocate arrays for probabilities and transitions
-    prob = np.zeros((C, N), dtype=np.float64)
+    # Pre-allocate arrays for rates and transitions
+    rates = np.zeros((C, N), dtype=np.float64)
     new_pop = np.zeros((C, N), dtype=np.float64)
+    probs_out = np.empty(C, dtype=np.float64)
 
     # create a dictionary to store the data needed for the transitions
     system_data = {
@@ -853,26 +889,24 @@ def stochastic_simulation(T: int,
             if not transitions: 
                 continue
                 
-            prob.fill(0)
+            rates.fill(0)
             source_idx = comp_indices[comp]
             current_pop = compartments_evolution[t, source_idx]
+            mask = np.arange(rates.shape[0]) != source_idx
 
             if not np.any(current_pop):
                 continue
 
             for tr in transitions:
                 target_idx = comp_indices[tr.target]
-                trans_prob = epimodel.transition_functions[tr.kind](
+                trans_rate = epimodel.transition_functions[tr.kind](
                     tr.params, system_data
                 )
-                prob[target_idx] += trans_prob
-            
-            # Compute remaining probability
-            prob[source_idx] = 1 - np.sum(prob, axis=0)
+                rates[target_idx] += trans_rate
             
             delta = np.array([
-                multinomial(n, p) if n > 0 else np.zeros(C)
-                for n, p in zip(current_pop, prob.T)
+                multinomial(n, r, source_idx, mask, dt, apply_linear_approximation=apply_linear_approximation, rng=rng, probs_out=probs_out) if n > 0 else np.zeros(C)
+                for n, r in zip(current_pop, rates.T)
             ])
 
             # Store transition counts
@@ -890,28 +924,32 @@ def stochastic_simulation(T: int,
     return compartments_evolution[1:], transitions_evolution
 
 
-def compute_spontaneous_transition_probability(params, data): 
+def compute_spontaneous_transition_rate(params, data): 
     """
-    Compute the probability of a spontaneous transition.
+    Compute the rate of a spontaneous transition.
 
     Args:
-        params: The parameters of the transition
-        data: The data needed for the transition
+        params: The parameters of the transition provided by the user.
+        data: A dictionary containing the data needed for the transition. 
+            - parameters: The model parameters
+            - t: The current time step
+    Returns:
+        The rate of the transition
     """
     if isinstance(params, str):
         env_copy = copy.deepcopy(data["parameters"])
         rate_eval = evaluate(expr=params, env=env_copy)[data["t"]]
-        return 1 - np.exp(-rate_eval * data["dt"])
+        return rate_eval
     else:
-        return 1 - np.exp(-params * data["dt"])   
+        return params
 
 
-def compute_mediated_transition_probability(params, data): 
+def compute_mediated_transition_rate(params, data): 
     """
-    Compute the probability of a mediated transition.
+    Compute the rate of a mediated transition.
 
     Args:
-        params: The parameters of the transition. params["agent"] is the agent compartment
+        params: The parameters of the transition provided by the user.
         data: A dictionary containing the data needed for the transition. 
             - parameters: The model parameters
             - t: The current time step
@@ -919,7 +957,6 @@ def compute_mediated_transition_probability(params, data):
             - contact_matrix: The contact matrix
             - pop: The population in different compartments
             - pop_sizes: The population sizes
-            - dt: The time step size
     """
     if isinstance(params[0], str):
         env_copy = copy.deepcopy(data["parameters"])
@@ -931,15 +968,15 @@ def compute_mediated_transition_probability(params, data):
             data["contact_matrix"]["overall"] * data["pop"][agent_idx] / data["pop_sizes"], 
             axis=1
         )
-    return 1 - np.exp(-rate_eval * interaction * data["dt"])
+    return rate_eval * interaction
 
 
 def validate_transition_function(func: Callable) -> None:
     """
-    Validates that a transition function has the correct signature and parameters.
+    Validates that a transition rate function has the correct signature and parameters.
     
     Args:
-        func: The transition function to validate
+        func: The transition rate function to validate
         
     Raises:
         ValueError: If the function signature doesn't match requirements

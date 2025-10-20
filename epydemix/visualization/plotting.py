@@ -35,6 +35,7 @@ def get_timeseries_data(df_quantiles: pd.DataFrame,
 def plot_quantiles(df_quantiles: pd.DataFrame,
                   columns: Union[List[str], str], 
                   data: Optional[pd.DataFrame] = None,
+                  data_date_column: str = "date",
                   ax: Optional[plt.Axes] = None,
                   lower_q: float = 0.05, 
                   upper_q: float = 0.95, 
@@ -58,6 +59,7 @@ def plot_quantiles(df_quantiles: pd.DataFrame,
         df_quantiles: DataFrame with columns: 'date', 'quantile', and data columns
         columns: Column name(s) to plot
         data: Optional DataFrame containing observed data
+        data_date_column: Column name for date in data
         ax: Matplotlib axes to plot on
         lower_q: Lower quantile value (0.05 = 5th percentile)
         upper_q: Upper quantile value (0.95 = 95th percentile)
@@ -116,8 +118,7 @@ def plot_quantiles(df_quantiles: pd.DataFrame,
     if show_data and data is not None:
         data_colors = get_black_to_grey(len(columns))
         for column, data_color, label in zip(columns, data_colors, labels):
-            p_actual = ax.scatter(df_quantiles.date.unique(), data[column], 
-                                  s=10, color=data_color, zorder=3, label=f"observed ({label})")
+            p_actual = ax.scatter(data[data_date_column], data[column], s=10, color=data_color, zorder=3, label=f"observed ({label})")
             if show_legend:
                 pleg.append(p_actual)
                 handles.append(f"observed ({label})")

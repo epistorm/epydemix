@@ -54,13 +54,6 @@ class SimulationResults:
             trans_name: np.stack([t.transitions[trans_name] for t in self.trajectories], axis=0)
             for trans_name in self.trajectories[0].transitions.keys()
         }
-    
-    def get_quantiles(self, stacked: Dict[str, np.ndarray], quantiles: Optional[List[float]] = None) -> pd.DataFrame:
-        """
-        Compute quantiles across all trajectories.
-        """
-        if quantiles is None:
-            quantiles = [0.025, 0.05, 0.25, 0.5, 0.75, 0.95, 0.975]
 
     def get_quantiles(self, stacked: Dict[str, np.ndarray], quantiles: Optional[List[float]] = None) -> pd.DataFrame:
         """
