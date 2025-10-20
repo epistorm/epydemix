@@ -3,21 +3,33 @@ Welcome to Epydemix's Documentation!
 
 The source code for Epydemix is available on GitHub: `Epydemix Repository <https://github.com/epistorm/epydemix>`_.
 
-.. image:: https://img.shields.io/github/stars/epistorm/epydemix?style=social
-   :target: https://github.com/epistorm/epydemix
-   :alt: GitHub Repo
+.. image:: https://img.shields.io/github/stars/epistorm/epydemix.svg?style=social
+   :target: https://github.com/epistorm/epydemix/stargazers
+   :alt: GitHub stars
+
+.. image:: https://static.pepy.tech/badge/epydemix
+   :target: https://pepy.tech/projects/epydemix
+   :alt: PyPI Downloads
 
 .. image:: https://readthedocs.org/projects/epydemix/badge/?version=latest
    :target: https://epydemix.readthedocs.io/en/latest/?badge=latest
-   :alt: Documentation Status
+   :alt: Read the Docs
 
 .. image:: https://img.shields.io/badge/License-GPLv3-blue.svg
-    :target: https://www.gnu.org/licenses/gpl-3.0
-    :alt: License: GPL v3
+   :target: https://www.gnu.org/licenses/gpl-3.0
+   :alt: License: GPL v3
 
 .. image:: https://codecov.io/gh/epistorm/epydemix/branch/main/graph/badge.svg
    :target: https://codecov.io/gh/epistorm/epydemix
-   :alt: Code coverage status
+   :alt: Codecov
+
+.. image:: https://img.shields.io/pypi/v/epydemix.svg
+   :target: https://pypi.org/project/epydemix/
+   :alt: PyPI version
+
+.. image:: https://img.shields.io/badge/preprint-medRxiv-orange
+   :target: https://www.medrxiv.org/content/10.1101/2025.05.07.25327151v1
+   :alt: medRxiv preprint
 
 
 .. image:: https://raw.githubusercontent.com/epistorm/epydemix/main/tutorials/img/epydemix-logo.png
