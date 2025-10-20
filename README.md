@@ -71,7 +71,7 @@ We provide a series of tutorials to help you get started with **epydemix**.
 - [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/09_Vaccinations.ipynb): Modeling Vaccinations
 - [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations and Calibration with Multiprocessing
 
-You can run all tutorials directly in Google Colab — just open any notebook in the [tutorials](./tutorials) folder and click the button at the top ![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg) 
+You can run all tutorials directly in Google Colab — just open any notebook in the [tutorials](./tutorials) folder and click the **“Open in Colab”** button at the top.
 
 
 
