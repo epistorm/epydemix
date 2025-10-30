@@ -7,9 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [1.0.2] – 2025-10-08
+## [1.0.2] – 2025-10-30
 
-### [Unreleased]
 ### Added
 
 * Custom multinomial sampling implementation: replaces `numpy.random.multinomial()` to improve the calculation of transition probabilities.

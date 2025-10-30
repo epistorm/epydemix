@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="epydemix",  
-    version="1.0.1",  
+    version="1.0.2",  
     author="The Epydemix Developers",  
     author_email="epydemix@isi.it",  
     description="A Python package for epidemic modeling, simulation, and calibration",  
@@ -20,7 +20,7 @@ setup(
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)", 
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.8',  # Specify the minimum Python version required
+    python_requires='>=3.8', 
     install_requires=[
         "evalidate>=2.0.3",
         "matplotlib>=3.7.3",
