@@ -16,11 +16,23 @@
 
 
 ## Installation
+You can install **epydemix** from either **PyPI** or **conda-forge**. We recommend using a virtual environment (via `conda`, `mamba`, or `venv`) to avoid dependency conflicts.
 
-To install the latest version of `epydemix` from [PyPI](https://pypi.org/project/epydemix/), use the following command in a terminal or command prompt—ideally within a virtual environment to avoid dependency conflicts:
+### Install from PyPI
 
 ```bash
 pip install epydemix
+```
+### Install from Conda (conda-forge)
+
+```bash
+conda install -c conda-forge epydemix
+```
+
+To create a fresh environment and install Epydemix:
+```bash
+conda create -n epydemix-env -c conda-forge epydemix
+conda activate epydemix-env
 ```
 
 ---
