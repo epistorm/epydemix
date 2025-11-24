@@ -5,7 +5,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 ![Codecov](https://codecov.io/gh/epistorm/epydemix/branch/main/graph/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/epydemix.svg)](https://pypi.org/project/epydemix/)
-[![medRxiv](https://img.shields.io/badge/preprint-medRxiv-orange)](https://www.medrxiv.org/content/10.1101/2025.05.07.25327151v1)
+[![PLOS Computational Biology](https://img.shields.io/badge/Published%20in-PLOS%20Computational%20Biology-blue?logo=plos)](https://doi.org/10.1371/journal.pcbi.1013735)
 
 ![Alt text](https://raw.githubusercontent.com/epistorm/epydemix/main/tutorials/img/epydemix-logo.png)
 
@@ -114,19 +114,18 @@ For more information about the available population and contact matrices and to 
 
 ---
 ## Citation 
-The preprint describing the development of Epydemix is available [here](https://www.medrxiv.org/content/10.1101/2025.05.07.25327151v1).
+The paper describing the development of Epydemix is available [here](https://doi.org/10.1371/journal.pcbi.1013735).
 To reference our work, please use the following citation:
 ```
 @article{gozzi2025epydemix,
-	author = {Gozzi, Nicol{\`o} and Chinazzi, Matteo and Davis, Jessica T. and Gioannini, Corrado and Rossi, Luca and Ajelli, Marco and Perra, Nicola and Vespignani, Alessandro},
-	title = {Epydemix: An open-source Python package for epidemic modeling with integrated approximate Bayesian calibration},
-	elocation-id = {2025.05.07.25327151},
-	year = {2025},
-	doi = {10.1101/2025.05.07.25327151},
-	publisher = {Cold Spring Harbor Laboratory Press},
-	URL = {https://www.medrxiv.org/content/early/2025/05/08/2025.05.07.25327151},
-	eprint = {https://www.medrxiv.org/content/early/2025/05/08/2025.05.07.25327151.full.pdf},
-	journal = {medRxiv}
+  title={Epydemix: An open-source Python package for epidemic modeling with integrated approximate Bayesian calibration},
+  author={Gozzi, Nicol{\'o} and Chinazzi, Matteo and Davis, Jessica T and Gioannini, Corrado and Rossi, Luca and Ajelli, Marco and Perra, Nicola and Vespignani, Alessandro},
+  journal={PLOS Computational Biology},
+  volume={21},
+  number={11},
+  pages={e1013735},
+  year={2025},
+  publisher={Public Library of Science San Francisco, CA USA}
 }
 ```
 
