@@ -9,7 +9,25 @@ on:
       - '**'
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r dev-requirements.txt
+      - name: Run ruff format
+        run: ruff format --check .
+      - name: Run ruff
+        run: ruff check .
   test:
+    needs: lint
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
