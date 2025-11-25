@@ -1,7 +1,7 @@
-import numpy as np 
-from scipy.stats import norm
-from typing import Dict, List, Tuple, Optional, Union, Any
 from abc import ABC, abstractmethod
+from typing import Union
+
+import numpy as np
 
 
 def fast_normal_pdf(x, mean, std):
@@ -35,9 +35,10 @@ class DefaultPerturbationContinuous(Perturbation):
     """
     Componenent-wise normal perturbation kernel with adaptive standard deviation (Beaumont et al. (2009)).
     """
+
     def __init__(self, param_name):
         super().__init__(param_name)
-        self.std = 0.1  
+        self.std = 0.1
 
     def propose(self, x):
         """Propose a new value based on the current value."""
@@ -58,8 +59,8 @@ class DefaultPerturbationContinuous(Perturbation):
 class DefaultPerturbationDiscrete(Perturbation):
     def __init__(self, param_name, prior, jump_probability=0.3):
         super().__init__(param_name)
-        self.prior = prior  
-        self.support = np.arange(self.prior.support()[0], self.prior.support()[1]+1)
+        self.prior = prior
+        self.support = np.arange(self.prior.support()[0], self.prior.support()[1] + 1)
         self.jump_probability = jump_probability
         self.rest_prob = jump_probability / (len(self.support) - 1)
 
@@ -70,7 +71,7 @@ class DefaultPerturbationDiscrete(Perturbation):
             while proposed == x:
                 proposed = np.random.choice(self.support)
             return proposed
-        return x 
+        return x
 
     def pdf(self, x, center):
         """Transition probability for the discrete parameter."""
@@ -82,7 +83,7 @@ class DefaultPerturbationDiscrete(Perturbation):
 
     def update(self, particles, weights, param_names):
         """Update jump_probability or other characteristics if needed."""
-        pass 
+        pass
 
 
 def sample_prior(priors, param_names):
@@ -109,10 +110,8 @@ def compute_effective_sample_size(weights: np.ndarray) -> float:
 
 
 def weighted_quantile(
-        values: Union[np.ndarray, list],
-        weights: Union[np.ndarray, list],
-        quantile: float
-    ) -> float:
+    values: Union[np.ndarray, list], weights: Union[np.ndarray, list], quantile: float
+) -> float:
     """
     Compute the weighted quantile of a dataset.
 
@@ -130,10 +129,10 @@ def weighted_quantile(
     # Ensure quantile is between 0 and 1
     if not (0 <= quantile <= 1):
         raise ValueError("Quantile must be between 0 and 1.")
-    
+
     values = np.asarray(values)
     weights = np.asarray(weights)
-    
+
     # Ensure that weights sum to 1
     weights /= np.sum(weights)
 

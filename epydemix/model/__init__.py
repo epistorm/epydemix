@@ -1,14 +1,14 @@
 # epydemix/model/__init__.py
 
 from .epimodel import EpiModel, simulate
-from .transition import Transition
-from .simulation_results import SimulationResults
 from .predefined_models import load_predefined_model
+from .simulation_results import SimulationResults
+from .transition import Transition
 
 __all__ = [
-    'EpiModel',
-    'simulate',
-    'Transition', 
-    'SimulationResults',
-    'load_predefined_model'
+    "EpiModel",
+    "simulate",
+    "Transition",
+    "SimulationResults",
+    "load_predefined_model",
 ]

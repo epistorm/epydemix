@@ -1,5 +1,6 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 class StochasticSIR:
     def __init__(self, S0, I0, R0, beta, gamma, population, time_steps):
@@ -36,12 +37,12 @@ class StochasticSIR:
         I = self.I0
         R = self.R0
 
-        results = {'S': [], 'I': [], 'R': []}
+        results = {"S": [], "I": [], "R": []}
 
         for t in range(self.time_steps):
-            results['S'].append(S)
-            results['I'].append(I)
-            results['R'].append(R)
+            results["S"].append(S)
+            results["I"].append(I)
+            results["R"].append(R)
 
             if I == 0:  # Stop if no more infected individuals
                 break
@@ -81,9 +82,9 @@ class StochasticSIR:
         # Run Nsim simulations and collect results
         for _ in range(Nsim):
             results = self.simulate()
-            all_S.append(results['S'])
-            all_I.append(results['I'])
-            all_R.append(results['R'])
+            all_S.append(results["S"])
+            all_I.append(results["I"])
+            all_R.append(results["R"])
 
         # Find the longest simulation
         max_len = max(len(traj) for traj in all_S)
@@ -102,9 +103,9 @@ class StochasticSIR:
 
         # Compute the quantiles across the simulations and store them in a dict of dicts
         quantile_results = {
-            'S': {q: np.quantile(all_S, q, axis=0) for q in quantiles},
-            'I': {q: np.quantile(all_I, q, axis=0) for q in quantiles},
-            'R': {q: np.quantile(all_R, q, axis=0) for q in quantiles}
+            "S": {q: np.quantile(all_S, q, axis=0) for q in quantiles},
+            "I": {q: np.quantile(all_I, q, axis=0) for q in quantiles},
+            "R": {q: np.quantile(all_R, q, axis=0) for q in quantiles},
         }
 
         return quantile_results
@@ -118,16 +119,25 @@ class StochasticSIR:
                                              and inner keys as the quantiles (e.g., 0.25, 0.5, 0.75).
             quantiles (list of float): The quantiles to plot (e.g., [0.25, 0.5, 0.75]).
         """
-        time_range = range(len(quantile_results['S'][quantiles[0]]))
-        
+        time_range = range(len(quantile_results["S"][quantiles[0]]))
+
         for q in quantiles:
-            plt.plot(time_range, quantile_results['S'][q], label=f'Susceptible ({q*100:.0f}%)')
-            plt.plot(time_range, quantile_results['I'][q], label=f'Infected ({q*100:.0f}%)')
-            plt.plot(time_range, quantile_results['R'][q], label=f'Recovered ({q*100:.0f}%)')
+            plt.plot(
+                time_range,
+                quantile_results["S"][q],
+                label=f"Susceptible ({q * 100:.0f}%)",
+            )
+            plt.plot(
+                time_range, quantile_results["I"][q], label=f"Infected ({q * 100:.0f}%)"
+            )
+            plt.plot(
+                time_range,
+                quantile_results["R"][q],
+                label=f"Recovered ({q * 100:.0f}%)",
+            )
 
-        plt.xlabel('Time Steps')
-        plt.ylabel('Population')
+        plt.xlabel("Time Steps")
+        plt.ylabel("Population")
         plt.legend()
-        plt.title('Stochastic SIR Model - Quantiles over Multiple Simulations')
+        plt.title("Stochastic SIR Model - Quantiles over Multiple Simulations")
         plt.show()
-
