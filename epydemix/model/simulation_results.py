@@ -35,32 +35,46 @@ class SimulationResults:
         """Compartment indices."""
         return self.trajectories[0].compartment_idx if self.trajectories else {}
 
-    def get_stacked_compartments(self) -> Dict[str, np.ndarray]:
+    def get_stacked_compartments(
+        self, variables: Optional[List[str]] = None
+    ) -> Dict[str, np.ndarray]:
         """
         Get trajectories stacked into arrays of shape (Nsim, timesteps).
+
+        Args:
+            variables: List of compartment names to include. If None, all compartments are included.
         """
         if not self.trajectories:
             return {}
 
+        keys = variables if variables else self.trajectories[0].compartments.keys()
         return {
             comp_name: np.stack(
                 [t.compartments[comp_name] for t in self.trajectories], axis=0
             )
-            for comp_name in self.trajectories[0].compartments.keys()
+            for comp_name in keys
+            if comp_name in self.trajectories[0].compartments
         }
 
-    def get_stacked_transitions(self) -> Dict[str, np.ndarray]:
+    def get_stacked_transitions(
+        self, variables: Optional[List[str]] = None
+    ) -> Dict[str, np.ndarray]:
         """
         Get trajectories stacked into arrays of shape (Nsim, timesteps).
+
+        Args:
+            variables: List of transition names to include. If None, all transitions are included.
         """
         if not self.trajectories:
             return {}
 
+        keys = variables if variables else self.trajectories[0].transitions.keys()
         return {
             trans_name: np.stack(
                 [t.transitions[trans_name] for t in self.trajectories], axis=0
             )
-            for trans_name in self.trajectories[0].transitions.keys()
+            for trans_name in keys
+            if trans_name in self.trajectories[0].transitions
         }
 
     def get_quantiles(
@@ -121,6 +135,7 @@ class SimulationResults:
         self,
         quantiles: Optional[List[float]] = None,
         ignore_nan: bool = False,
+        variables: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """
         Compute quantiles across all trajectories for transitions.
@@ -130,14 +145,16 @@ class SimulationResults:
         Args:
             quantiles: List of quantile values to compute. If None, defaults to [0.025, 0.05, 0.25, 0.5, 0.75, 0.95, 0.975]
             ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
+            variables: List of transition names to include. If None, all transitions are included.
         """
-        stacked = self.get_stacked_transitions()
+        stacked = self.get_stacked_transitions(variables=variables)
         return self.get_quantiles(stacked, quantiles, ignore_nan)
 
     def get_quantiles_compartments(
         self,
         quantiles: Optional[List[float]] = None,
         ignore_nan: bool = False,
+        variables: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """
         Compute quantiles across all trajectories for compartments.
@@ -147,8 +164,9 @@ class SimulationResults:
         Args:
             quantiles: List of quantile values to compute. If None, defaults to [0.025, 0.05, 0.25, 0.5, 0.75, 0.95, 0.975]
             ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
+            variables: List of compartment names to include. If None, all compartments are included.
         """
-        stacked = self.get_stacked_compartments()
+        stacked = self.get_stacked_compartments(variables=variables)
         return self.get_quantiles(stacked, quantiles, ignore_nan)
 
     def resample(

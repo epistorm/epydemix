@@ -258,3 +258,105 @@ def test_get_quantiles_compartments_ignore_nan(mock_trajectory_data_with_nan):
         quantiles_df_ignore["S"].notna().sum()
         >= quantiles_df_default["S"].notna().sum()
     )
+
+
+# --- Tests for `variables` filtering ---
+
+
+def test_get_stacked_compartments_all_variables(mock_trajectory_data_no_nan):
+    """No variables arg returns all compartments."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    stacked = sim.get_stacked_compartments()
+    assert set(stacked.keys()) == {"S", "I", "R"}
+    for arr in stacked.values():
+        assert arr.shape == (5, 10)
+
+
+def test_get_stacked_compartments_filter_subset(mock_trajectory_data_no_nan):
+    """variables=['S'] returns only S."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    stacked = sim.get_stacked_compartments(variables=["S"])
+    assert set(stacked.keys()) == {"S"}
+    assert stacked["S"].shape == (5, 10)
+
+
+def test_get_stacked_compartments_nonexistent_variable(mock_trajectory_data_no_nan):
+    """variables=['X'] returns empty dict."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    stacked = sim.get_stacked_compartments(variables=["X"])
+    assert stacked == {}
+
+
+def test_get_stacked_compartments_partial_match(mock_trajectory_data_no_nan):
+    """variables=['S', 'X'] returns only S."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    stacked = sim.get_stacked_compartments(variables=["S", "X"])
+    assert set(stacked.keys()) == {"S"}
+
+
+def test_get_stacked_transitions_all_variables(mock_trajectory_data_no_nan):
+    """No variables arg returns all transitions."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    stacked = sim.get_stacked_transitions()
+    assert set(stacked.keys()) == {"S_to_I", "I_to_R"}
+    for arr in stacked.values():
+        assert arr.shape == (5, 10)
+
+
+def test_get_stacked_transitions_filter_subset(mock_trajectory_data_no_nan):
+    """variables=['S_to_I'] returns only S_to_I, not I_to_R."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    stacked = sim.get_stacked_transitions(variables=["S_to_I"])
+    assert set(stacked.keys()) == {"S_to_I"}
+    assert "I_to_R" not in stacked
+
+
+def test_get_stacked_transitions_nonexistent_variable(mock_trajectory_data_no_nan):
+    """variables=['X_to_Y'] returns empty dict."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    stacked = sim.get_stacked_transitions(variables=["X_to_Y"])
+    assert stacked == {}
+
+
+def test_get_quantiles_compartments_with_variables_filter(mock_trajectory_data_no_nan):
+    """variables=['S'] includes S but not I."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    df = sim.get_quantiles_compartments(quantiles=[0.5], variables=["S"])
+    assert "S" in df.columns
+    assert "I" not in df.columns
+
+
+def test_get_quantiles_compartments_all_variables_default(mock_trajectory_data_no_nan):
+    """No variables arg includes S, I, and R."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    df = sim.get_quantiles_compartments(quantiles=[0.5])
+    assert "S" in df.columns
+    assert "I" in df.columns
+    assert "R" in df.columns
+
+
+def test_get_quantiles_transitions_with_variables_filter(mock_trajectory_data_no_nan):
+    """variables=['S_to_I'] includes S_to_I but not I_to_R."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    df = sim.get_quantiles_transitions(quantiles=[0.5], variables=["S_to_I"])
+    assert "S_to_I" in df.columns
+    assert "I_to_R" not in df.columns
+
+
+def test_get_quantiles_transitions_nonexistent_variable(mock_trajectory_data_no_nan):
+    """variables=['X_to_Y'] returns only date+quantile columns."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    df = sim.get_quantiles_transitions(quantiles=[0.5], variables=["X_to_Y"])
+    assert set(df.columns) == {"date", "quantile"}
+
+
+def test_get_quantiles_compartments_variables_with_ignore_nan(
+    mock_trajectory_data_with_nan,
+):
+    """variables=['I'] with ignore_nan includes I but not S."""
+    sim = SimulationResults(trajectories=mock_trajectory_data_with_nan, parameters={})
+    df = sim.get_quantiles_compartments(
+        quantiles=[0.5], ignore_nan=True, variables=["I"]
+    )
+    assert "I" in df.columns
+    assert "S" not in df.columns
