@@ -70,24 +70,41 @@ class CalibrationResults:
         return self._get_generation(generation, self.distances)
 
     def get_calibration_trajectories(
-        self, generation: Optional[int] = None
+        self,
+        generation: Optional[int] = None,
+        variables: Optional[List[str]] = None,
     ) -> Dict[str, np.ndarray]:
-        """Get stacked trajectories from calibration results."""
+        """Get stacked trajectories from calibration results.
+
+        Args:
+            generation: The generation to get trajectories from. If None, uses the last generation.
+            variables: Optional list of variable names to include. If None, all variables are included.
+        """
         simulations = self.get_selected_trajectories(generation)
         if (
             simulations is None or len(simulations) == 0
         ):  # Better check for empty simulations
             return {}
 
+        # Use user-provided variables or all keys from the first simulation
+        keys = variables if variables else simulations[0].keys()
         return {
             key: np.stack([sim[key] for sim in simulations], axis=0)
-            for key in simulations[0].keys()
+            for key in keys
+            if key in simulations[0]
         }
 
     def get_projection_trajectories(
-        self, scenario_id: str = "baseline"
+        self,
+        scenario_id: str = "baseline",
+        variables: Optional[List[str]] = None,
     ) -> Dict[str, np.ndarray]:
-        """Get stacked trajectories from projection results."""
+        """Get stacked trajectories from projection results.
+
+        Args:
+            scenario_id: The scenario identifier to get projections for.
+            variables: Optional list of variable names to include. If None, all variables are included.
+        """
         if scenario_id not in self.projections:
             raise ValueError(f"No projections found for id {scenario_id}")
 
@@ -97,9 +114,12 @@ class CalibrationResults:
         ):  # Better check for empty simulations
             return {}
 
+        # Use user-provided variables or all keys from the first simulation
+        keys = variables if variables else simulations[0].keys()
         return {
             key: np.stack([sim[key] for sim in simulations], axis=0)
-            for key in simulations[0].keys()
+            for key in keys
+            if key in simulations[0]
         }
 
     def get_calibration_quantiles(
@@ -119,7 +139,9 @@ class CalibrationResults:
             variables: Optional list of variables to include
             ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
         """
-        trajectories = self.get_calibration_trajectories(generation)
+        trajectories = self.get_calibration_trajectories(
+            generation, variables=variables
+        )
         return self._compute_quantiles(
             trajectories, dates, quantiles, variables, ignore_nan
         )
@@ -141,7 +163,9 @@ class CalibrationResults:
             variables: Optional list of variables to include
             ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
         """
-        trajectories = self.get_projection_trajectories(scenario_id)
+        trajectories = self.get_projection_trajectories(
+            scenario_id, variables=variables
+        )
         return self._compute_quantiles(
             trajectories, dates, quantiles, variables, ignore_nan
         )
