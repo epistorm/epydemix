@@ -209,3 +209,171 @@ def test_calibration_quantiles_with_variables_filter(mock_calibration_data_no_na
     assert "S" in quantiles_df.columns
     assert "I" in quantiles_df.columns
     assert "R" not in quantiles_df.columns
+
+
+# --- Fixture with compartment and transition keys ---
+
+
+@pytest.fixture
+def mock_data_with_transitions():
+    """Create mock data with both compartment and transition keys."""
+    n_traj = 5
+    trajectories = []
+    for i in range(n_traj):
+        scale = 1 + i * 0.1
+        traj = {
+            "S_total": np.array([1000, 990, 980, 970, 960, 950, 940, 930, 920, 910])
+            * scale,
+            "I_total": np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]) * scale,
+            "R_total": np.array([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]) * scale,
+            "S_to_I_total": np.array([10, 10, 10, 10, 10, 10, 10, 10, 10, 10])
+            * scale,
+            "I_to_R_total": np.array([0, 10, 10, 10, 10, 10, 10, 10, 10, 10]) * scale,
+        }
+        trajectories.append(traj)
+
+    calib_results = CalibrationResults()
+    calib_results.selected_trajectories[0] = trajectories
+    calib_results.projections["baseline"] = trajectories
+    return calib_results
+
+
+# --- get_calibration_trajectories direct tests ---
+
+
+def test_get_calibration_trajectories_all_variables(mock_calibration_data_no_nan):
+    """Test that all variables are returned when no variables arg is passed."""
+    result = mock_calibration_data_no_nan.get_calibration_trajectories()
+    assert set(result.keys()) == {"S", "I", "R"}
+    for key in result:
+        assert result[key].shape == (5, 10)
+
+
+def test_get_calibration_trajectories_filter_subset(mock_calibration_data_no_nan):
+    """Test filtering to a subset of variables."""
+    result = mock_calibration_data_no_nan.get_calibration_trajectories(
+        variables=["S", "I"]
+    )
+    assert set(result.keys()) == {"S", "I"}
+    assert "R" not in result
+    for key in result:
+        assert result[key].shape == (5, 10)
+
+
+def test_get_calibration_trajectories_nonexistent_variable(
+    mock_calibration_data_no_nan,
+):
+    """Test that requesting a nonexistent variable returns an empty dict."""
+    result = mock_calibration_data_no_nan.get_calibration_trajectories(variables=["X"])
+    assert result == {}
+
+
+def test_get_calibration_trajectories_empty():
+    """Test that empty selected_trajectories returns an empty dict."""
+    calib_results = CalibrationResults()
+    result = calib_results.get_calibration_trajectories()
+    assert result == {}
+
+
+# --- get_projection_trajectories direct tests ---
+
+
+def test_get_projection_trajectories_all_variables(mock_calibration_data_high_nan):
+    """Test that all variables are returned when no variables arg is passed."""
+    result = mock_calibration_data_high_nan.get_projection_trajectories(
+        scenario_id="test_scenario"
+    )
+    assert set(result.keys()) == {"S", "I", "R"}
+    for key in result:
+        assert result[key].shape == (5, 10)
+
+
+def test_get_projection_trajectories_filter_subset(mock_calibration_data_high_nan):
+    """Test filtering projection trajectories to a single variable."""
+    result = mock_calibration_data_high_nan.get_projection_trajectories(
+        scenario_id="test_scenario", variables=["S"]
+    )
+    assert set(result.keys()) == {"S"}
+    assert result["S"].shape == (5, 10)
+
+
+def test_get_projection_trajectories_nonexistent_scenario():
+    """Test that a nonexistent scenario raises ValueError."""
+    calib_results = CalibrationResults()
+    with pytest.raises(ValueError, match="No projections found"):
+        calib_results.get_projection_trajectories(scenario_id="nonexistent")
+
+
+# --- Compartment vs transition filtering tests ---
+
+
+def test_calibration_trajectories_filter_compartments_only(
+    mock_data_with_transitions,
+):
+    """Test filtering to only compartment keys (no transition keys)."""
+    result = mock_data_with_transitions.get_calibration_trajectories(
+        variables=["S_total", "I_total", "R_total"]
+    )
+    assert set(result.keys()) == {"S_total", "I_total", "R_total"}
+    assert not any("_to_" in key for key in result)
+    for key in result:
+        assert result[key].shape == (5, 10)
+
+
+def test_calibration_trajectories_filter_transitions_only(
+    mock_data_with_transitions,
+):
+    """Test filtering to only transition keys (no compartment keys)."""
+    result = mock_data_with_transitions.get_calibration_trajectories(
+        variables=["S_to_I_total", "I_to_R_total"]
+    )
+    assert set(result.keys()) == {"S_to_I_total", "I_to_R_total"}
+    # Verify no compartment-only keys
+    for key in result:
+        assert "_to_" in key
+    for key in result:
+        assert result[key].shape == (5, 10)
+
+
+def test_projection_trajectories_filter_transitions_only(
+    mock_data_with_transitions,
+):
+    """Test filtering projection trajectories to only transition keys."""
+    result = mock_data_with_transitions.get_projection_trajectories(
+        scenario_id="baseline", variables=["S_to_I_total", "I_to_R_total"]
+    )
+    assert set(result.keys()) == {"S_to_I_total", "I_to_R_total"}
+    assert not any(
+        key in result for key in ["S_total", "I_total", "R_total"]
+    )
+    for key in result:
+        assert result[key].shape == (5, 10)
+
+
+def test_calibration_quantiles_filter_transitions(mock_data_with_transitions):
+    """Test that calibration quantiles DataFrame only has transition columns."""
+    quantiles_df = mock_data_with_transitions.get_calibration_quantiles(
+        quantiles=[0.5], variables=["S_to_I_total", "I_to_R_total"]
+    )
+    assert "S_to_I_total" in quantiles_df.columns
+    assert "I_to_R_total" in quantiles_df.columns
+    assert "S_total" not in quantiles_df.columns
+    assert "I_total" not in quantiles_df.columns
+    assert "R_total" not in quantiles_df.columns
+    assert "date" in quantiles_df.columns
+    assert "quantile" in quantiles_df.columns
+
+
+def test_projection_quantiles_with_variables_filter(mock_data_with_transitions):
+    """Test that projection quantiles exclude filtered-out variables."""
+    quantiles_df = mock_data_with_transitions.get_projection_quantiles(
+        quantiles=[0.05, 0.5, 0.95],
+        scenario_id="baseline",
+        variables=["S_total", "I_total"],
+    )
+    assert "S_total" in quantiles_df.columns
+    assert "I_total" in quantiles_df.columns
+    assert "R_total" not in quantiles_df.columns
+    assert "S_to_I_total" not in quantiles_df.columns
+    assert "I_to_R_total" not in quantiles_df.columns
+    assert len(quantiles_df) == 10 * 3  # 10 timesteps * 3 quantiles
