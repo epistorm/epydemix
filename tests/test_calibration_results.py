@@ -226,8 +226,7 @@ def mock_data_with_transitions():
             * scale,
             "I_total": np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]) * scale,
             "R_total": np.array([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]) * scale,
-            "S_to_I_total": np.array([10, 10, 10, 10, 10, 10, 10, 10, 10, 10])
-            * scale,
+            "S_to_I_total": np.array([10, 10, 10, 10, 10, 10, 10, 10, 10, 10]) * scale,
             "I_to_R_total": np.array([0, 10, 10, 10, 10, 10, 10, 10, 10, 10]) * scale,
         }
         trajectories.append(traj)
@@ -343,9 +342,7 @@ def test_projection_trajectories_filter_transitions_only(
         scenario_id="baseline", variables=["S_to_I_total", "I_to_R_total"]
     )
     assert set(result.keys()) == {"S_to_I_total", "I_to_R_total"}
-    assert not any(
-        key in result for key in ["S_total", "I_total", "R_total"]
-    )
+    assert not any(key in result for key in ["S_total", "I_total", "R_total"])
     for key in result:
         assert result[key].shape == (5, 10)
 
