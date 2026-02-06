@@ -49,18 +49,20 @@ minversion = "6.0"
 addopts = "--strict-markers"
 testpaths = ["tests"]  # Directory containing tests
 
-[tool.pylint]
-# Pylint configuration 
-disable = [
-    "C0103",  # Disable specific linting rules
-]
-
-[tool.black]
-# Black configuration 
+[tool.ruff]
+# Ruff configuration
 line-length = 88
-target-version = ["py37"]
+exclude = ["**/*.ipynb"]
 
+[tool.ruff.lint]
+select = [
+    "PLE", # pylint errors
+    "PLW", # pylint warnings
+    "E", # pycodestyle
+    "F", # pyflakes
+    "I" # isort
+]
+ignore = ["E501", "E741"]
 
-[tool.isort]
-# isort configuration (for import sorting)
-profile = "black"
+[tool.ruff.format]
+quote-style = "double"

@@ -1,7 +1,11 @@
-import numpy as np
 from typing import Dict, Tuple
 
-def validate_data(data: Dict, simulation: Dict, shape_check : bool = True) -> Tuple[np.ndarray, np.ndarray]:
+import numpy as np
+
+
+def validate_data(
+    data: Dict, simulation: Dict, shape_check: bool = True
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Validates that the input Dictionaries contain the required key 'data' and that the shapes of the data arrays match.
 
@@ -26,6 +30,7 @@ def validate_data(data: Dict, simulation: Dict, shape_check : bool = True) -> Tu
 
     return observed, simulated
 
+
 def rmse(data: Dict, simulation: Dict) -> float:
     """
     Computes the Root Mean Square Error (RMSE) between the observed data and the simulated data.
@@ -39,6 +44,7 @@ def rmse(data: Dict, simulation: Dict) -> float:
     """
     observed, simulated = validate_data(data, simulation)
     return np.sqrt(np.mean((observed - simulated) ** 2))
+
 
 def wmape(data: Dict, simulation: Dict) -> float:
     """
@@ -54,6 +60,7 @@ def wmape(data: Dict, simulation: Dict) -> float:
     observed, simulated = validate_data(data, simulation)
     return np.sum(np.abs(observed - simulated)) / np.sum(np.abs(observed))
 
+
 def ae(data: Dict, simulation: Dict) -> np.ndarray:
     """
     Computes the Absolute Error (AE) between the observed data and the simulated data.
@@ -68,6 +75,7 @@ def ae(data: Dict, simulation: Dict) -> np.ndarray:
     observed, simulated = validate_data(data, simulation)
     return np.abs(observed - simulated)
 
+
 def mae(data: Dict, simulation: Dict) -> float:
     """
     Computes the Mean Absolute Error (MAE) between the observed data and the simulated data.
@@ -81,6 +89,7 @@ def mae(data: Dict, simulation: Dict) -> float:
     """
     observed, simulated = validate_data(data, simulation)
     return np.mean(np.abs(observed - simulated))
+
 
 def mape(data: Dict, simulation: Dict) -> float:
     """
