@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+* Migrated linting and formatting tooling to [Ruff](https://docs.astral.sh/ruff/), replacing the previous linting setup.
+* Added a `CONTRIBUTING.md` guide for new contributors.
+* Added a CI workflow (`.github/workflows/ci.yml`) and pre-commit configuration (`.pre-commit-config.yaml`) for automated linting checks.
+* Added `dev-requirements.txt` with development dependencies.
+
+---
+
 ## [1.0.2] – 2025-10-30
 
 ### Added
