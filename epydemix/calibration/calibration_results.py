@@ -108,10 +108,21 @@ class CalibrationResults:
         quantiles: List[float] = [0.05, 0.5, 0.95],
         generation: Optional[int] = None,
         variables: Optional[List[str]] = None,
+        ignore_nan: bool = False,
     ) -> pd.DataFrame:
-        """Compute quantiles from calibration results."""
+        """Compute quantiles from calibration results.
+
+        Args:
+            dates: Optional list of dates for the output
+            quantiles: List of quantile values to compute (default: [0.05, 0.5, 0.95])
+            generation: Optional generation number to use (default: latest generation)
+            variables: Optional list of variables to include
+            ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
+        """
         trajectories = self.get_calibration_trajectories(generation)
-        return self._compute_quantiles(trajectories, dates, quantiles, variables)
+        return self._compute_quantiles(
+            trajectories, dates, quantiles, variables, ignore_nan
+        )
 
     def get_projection_quantiles(
         self,
@@ -119,10 +130,21 @@ class CalibrationResults:
         quantiles: List[float] = [0.05, 0.5, 0.95],
         scenario_id: str = "baseline",
         variables: Optional[List[str]] = None,
+        ignore_nan: bool = False,
     ) -> pd.DataFrame:
-        """Compute quantiles from projection results."""
+        """Compute quantiles from projection results.
+
+        Args:
+            dates: Optional list of dates for the output
+            quantiles: List of quantile values to compute (default: [0.05, 0.5, 0.95])
+            scenario_id: Scenario identifier (default: "baseline")
+            variables: Optional list of variables to include
+            ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
+        """
         trajectories = self.get_projection_trajectories(scenario_id)
-        return self._compute_quantiles(trajectories, dates, quantiles, variables)
+        return self._compute_quantiles(
+            trajectories, dates, quantiles, variables, ignore_nan
+        )
 
     def _compute_quantiles(
         self,
@@ -130,8 +152,19 @@ class CalibrationResults:
         dates: Optional[List[datetime.date]],
         quantiles: List[float],
         variables: Optional[List[str]],
+        ignore_nan: bool = False,
     ) -> pd.DataFrame:
-        """Helper method to compute quantiles from trajectories."""
+        """Helper method to compute quantiles from trajectories.
+
+        Args:
+            trajectories: Dictionary of trajectory arrays
+            dates: Optional list of dates
+            quantiles: List of quantile values to compute
+            variables: Optional list of variables to include
+            ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
+                When enabled, a warning is issued if any time point has >50% NaN values,
+                as quantiles may be unreliable with small sample sizes.
+        """
         if variables:
             trajectories = {k: v for k, v in trajectories.items() if k in variables}
 
@@ -146,7 +179,24 @@ class CalibrationResults:
 
         data = {"date": simulation_dates, "quantile": quantile_values}
 
+        quantile_func = np.nanquantile if ignore_nan else np.quantile
+
+        # Check for high NaN proportions when ignore_nan is enabled
+        if ignore_nan:
+            import warnings
+
+            for key, vals in trajectories.items():
+                nan_prop = np.isnan(vals).mean(axis=0)
+                max_nan_prop = np.max(nan_prop)
+                if max_nan_prop > 0.5:
+                    warnings.warn(
+                        f"Variable '{key}' has time points with up to {max_nan_prop:.1%} NaN values. "
+                        f"Quantiles at these time points may be unreliable due to small sample size."
+                    )
+
         for key, vals in trajectories.items():
-            data[key] = [val for q in quantiles for val in np.quantile(vals, q, axis=0)]
+            data[key] = [
+                val for q in quantiles for val in quantile_func(vals, q, axis=0)
+            ]
 
         return pd.DataFrame(data)
