@@ -139,7 +139,9 @@ class CalibrationResults:
             variables: Optional list of variables to include
             ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
         """
-        trajectories = self.get_calibration_trajectories(generation, variables=variables)
+        trajectories = self.get_calibration_trajectories(
+            generation, variables=variables
+        )
         return self._compute_quantiles(
             trajectories, dates, quantiles, variables, ignore_nan
         )
@@ -161,7 +163,9 @@ class CalibrationResults:
             variables: Optional list of variables to include
             ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
         """
-        trajectories = self.get_projection_trajectories(scenario_id, variables=variables)
+        trajectories = self.get_projection_trajectories(
+            scenario_id, variables=variables
+        )
         return self._compute_quantiles(
             trajectories, dates, quantiles, variables, ignore_nan
         )
