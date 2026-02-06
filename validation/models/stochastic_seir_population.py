@@ -1,8 +1,10 @@
 import numpy as np
-import matplotlib.pyplot as plt
+
 
 class StochasticSEIRAgeGroups:
-    def __init__(self, S0, E0, I0, R0, beta, sigma, gamma, contact_matrix, population, time_steps):
+    def __init__(
+        self, S0, E0, I0, R0, beta, sigma, gamma, contact_matrix, population, time_steps
+    ):
         """
         Initializes the stochastic SEIR model with age groups and a contact matrix.
 
@@ -44,15 +46,17 @@ class StochasticSEIRAgeGroups:
         I = self.I0.copy()
         R = self.R0.copy()
 
-        results = {'S': [], 'E': [], 'I': [], 'R': []}
+        results = {"S": [], "E": [], "I": [], "R": []}
 
         for t in range(self.time_steps):
-            results['S'].append(S.copy())
-            results['E'].append(E.copy())
-            results['I'].append(I.copy())
-            results['R'].append(R.copy())
+            results["S"].append(S.copy())
+            results["E"].append(E.copy())
+            results["I"].append(I.copy())
+            results["R"].append(R.copy())
 
-            if np.sum(I) == 0 and np.sum(E) == 0:  # Stop if no more infected or exposed individuals
+            if (
+                np.sum(I) == 0 and np.sum(E) == 0
+            ):  # Stop if no more infected or exposed individuals
                 break
 
             # Compute new exposures for each age group
@@ -96,10 +100,10 @@ class StochasticSEIRAgeGroups:
         # Run Nsim simulations and collect results
         for _ in range(Nsim):
             results = self.simulate()
-            all_S.append(np.array(results['S']))
-            all_E.append(np.array(results['E']))
-            all_I.append(np.array(results['I']))
-            all_R.append(np.array(results['R']))
+            all_S.append(np.array(results["S"]))
+            all_E.append(np.array(results["E"]))
+            all_I.append(np.array(results["I"]))
+            all_R.append(np.array(results["R"]))
 
         # Find the longest simulation
         max_len = max([result.shape[0] for result in all_S])
@@ -107,11 +111,14 @@ class StochasticSEIRAgeGroups:
         # Pad the trajectories with the last value to make them all the same length
         for i in range(Nsim):
             if all_S[i].shape[0] < max_len:
-                padding = [(0, max_len - all_S[i].shape[0]), (0, 0)]  # Only pad the time dimension
-                all_S[i] = np.pad(all_S[i], padding, mode='edge')
-                all_E[i] = np.pad(all_E[i], padding, mode='edge')
-                all_I[i] = np.pad(all_I[i], padding, mode='edge')
-                all_R[i] = np.pad(all_R[i], padding, mode='edge')
+                padding = [
+                    (0, max_len - all_S[i].shape[0]),
+                    (0, 0),
+                ]  # Only pad the time dimension
+                all_S[i] = np.pad(all_S[i], padding, mode="edge")
+                all_E[i] = np.pad(all_E[i], padding, mode="edge")
+                all_I[i] = np.pad(all_I[i], padding, mode="edge")
+                all_R[i] = np.pad(all_R[i], padding, mode="edge")
 
         # Convert lists to arrays to compute the quantiles
         all_S = np.array(all_S)
@@ -121,12 +128,10 @@ class StochasticSEIRAgeGroups:
 
         # Compute the quantiles across the simulations and store them in a dict of dicts
         quantile_results = {
-            'S': {q: np.quantile(all_S, q, axis=0) for q in quantiles},
-            'E': {q: np.quantile(all_E, q, axis=0) for q in quantiles},
-            'I': {q: np.quantile(all_I, q, axis=0) for q in quantiles},
-            'R': {q: np.quantile(all_R, q, axis=0) for q in quantiles}
+            "S": {q: np.quantile(all_S, q, axis=0) for q in quantiles},
+            "E": {q: np.quantile(all_E, q, axis=0) for q in quantiles},
+            "I": {q: np.quantile(all_I, q, axis=0) for q in quantiles},
+            "R": {q: np.quantile(all_R, q, axis=0) for q in quantiles},
         }
 
         return quantile_results
-
-    
