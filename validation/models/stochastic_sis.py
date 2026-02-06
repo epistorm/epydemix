@@ -1,5 +1,6 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 class StochasticSIS:
     def __init__(self, S0, I0, beta, gamma, population, time_steps):
@@ -33,11 +34,11 @@ class StochasticSIS:
         S = self.S0
         I = self.I0
 
-        results = {'S': [], 'I': []}
+        results = {"S": [], "I": []}
 
         for t in range(self.time_steps):
-            results['S'].append(S)
-            results['I'].append(I)
+            results["S"].append(S)
+            results["I"].append(I)
 
             if I == 0:  # Stop if no more infected individuals
                 break
@@ -75,8 +76,8 @@ class StochasticSIS:
         # Run Nsim simulations and collect results
         for _ in range(Nsim):
             results = self.simulate()
-            all_S.append(results['S'])
-            all_I.append(results['I'])
+            all_S.append(results["S"])
+            all_I.append(results["I"])
 
         # Find the longest simulation
         max_len = max(len(traj) for traj in all_S)
@@ -93,8 +94,8 @@ class StochasticSIS:
 
         # Compute the quantiles across the simulations and store them in a dict of dicts
         quantile_results = {
-            'S': {q: np.quantile(all_S, q, axis=0) for q in quantiles},
-            'I': {q: np.quantile(all_I, q, axis=0) for q in quantiles}
+            "S": {q: np.quantile(all_S, q, axis=0) for q in quantiles},
+            "I": {q: np.quantile(all_I, q, axis=0) for q in quantiles},
         }
 
         return quantile_results
@@ -108,16 +109,20 @@ class StochasticSIS:
                                              and inner keys as the quantiles (e.g., 0.25, 0.5, 0.75).
             quantiles (list of float): The quantiles to plot (e.g., [0.25, 0.5, 0.75]).
         """
-        time_range = range(len(quantile_results['S'][quantiles[0]]))
-        
+        time_range = range(len(quantile_results["S"][quantiles[0]]))
+
         for q in quantiles:
-            plt.plot(time_range, quantile_results['S'][q], label=f'Susceptible ({q*100:.0f}%)')
-            plt.plot(time_range, quantile_results['I'][q], label=f'Infected ({q*100:.0f}%)')
+            plt.plot(
+                time_range,
+                quantile_results["S"][q],
+                label=f"Susceptible ({q * 100:.0f}%)",
+            )
+            plt.plot(
+                time_range, quantile_results["I"][q], label=f"Infected ({q * 100:.0f}%)"
+            )
 
-        plt.xlabel('Time Steps')
-        plt.ylabel('Population')
+        plt.xlabel("Time Steps")
+        plt.ylabel("Population")
         plt.legend()
-        plt.title('Stochastic SIS Model - Quantiles over Multiple Simulations')
+        plt.title("Stochastic SIS Model - Quantiles over Multiple Simulations")
         plt.show()
-
-

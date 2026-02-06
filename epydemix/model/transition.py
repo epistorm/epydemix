@@ -1,5 +1,6 @@
 from typing import Any
 
+
 class Transition:
     """
     Represents a transition in an epidemic model.

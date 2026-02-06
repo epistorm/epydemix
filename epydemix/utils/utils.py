@@ -1,11 +1,13 @@
-import numpy as np 
-import pandas as pd
-from collections.abc import Iterable
 import datetime
 import random
 import string
+from collections.abc import Iterable
+from typing import Any, Dict, List, Optional, Union
+
+import numpy as np
+import pandas as pd
 from evalidate import Expr, base_eval_model
-from typing import Union, Dict, List, Any, Optional, Tuple
+
 
 def is_scalar(value):
     return np.isscalar(value) and not isinstance(value, (str, bytes))
@@ -15,12 +17,7 @@ def is_iterable(value):
     return isinstance(value, Iterable) and not isinstance(value, (str, bytes))
 
 
-def validate_parameter_shape(
-        key: str,
-        value: Any,
-        T: int,
-        n_age: int
-    ) -> None:
+def validate_parameter_shape(key: str, value: Any, T: int, n_age: int) -> None:
     """
     Validates the shape of the input value based on its type and expected dimensions.
 
@@ -33,35 +30,39 @@ def validate_parameter_shape(
     Raises:
         ValueError: If the value does not meet the required shape criteria or if the type is unsupported.
     """
-    #if isinstance(value, (int, float)):
+    # if isinstance(value, (int, float)):
     if is_scalar(value):
-        return  # Scalars don't need validation 
+        return  # Scalars don't need validation
 
     elif is_iterable(value):
         value = np.array(value)
 
         if value.ndim == 1:  # 1D array
             if len(value) < T:
-                raise ValueError(f"The length of the 1D iterable for parameter '{key}' is smaller than simulation length ({T}).")
-        
+                raise ValueError(
+                    f"The length of the 1D iterable for parameter '{key}' is smaller than simulation length ({T})."
+                )
+
         elif value.ndim == 2:  # 2D array
             if value.shape[0] != T and value.shape[0] != 1:
-                raise ValueError(f"The first dimension of the 2D iterable for parameter '{key}' must be 1 or match simulation length ({T}).")
+                raise ValueError(
+                    f"The first dimension of the 2D iterable for parameter '{key}' must be 1 or match simulation length ({T})."
+                )
             if value.shape[1] != n_age:
-                raise ValueError(f"The second dimension of the 2D iterable for parameter '{key}' must match number of age groups ({n_age}).")
-        
+                raise ValueError(
+                    f"The second dimension of the 2D iterable for parameter '{key}' must match number of age groups ({n_age})."
+                )
+
         else:
-            raise ValueError(f"Unsupported number of dimensions for parameter '{key}': {value.ndim}")
-        
+            raise ValueError(
+                f"Unsupported number of dimensions for parameter '{key}': {value.ndim}"
+            )
+
     else:
         raise ValueError(f"Unsupported type for parameter '{key}': {type(value)}")
 
 
-def resize_parameter(
-        value: Any,
-        T: int,
-        n_age: int
-    ) -> np.ndarray:
+def resize_parameter(value: Any, T: int, n_age: int) -> np.ndarray:
     """
     Resizes the input value to have the shape (T, n_age).
 
@@ -72,8 +73,8 @@ def resize_parameter(
 
     Returns:
         np.ndarray: A 2D array with shape (T, n_age).
-    """ 
-    if is_scalar(value): # Scalar value
+    """
+    if is_scalar(value):  # Scalar value
         return np.full((T, n_age), value)
 
     value = np.array(value)
@@ -85,13 +86,11 @@ def resize_parameter(
         if value.shape[0] == 1:  # If the first dimension is 1, repeat it to match T
             return np.tile(value, (T, 1))
         return value
-    
+
 
 def create_definitions(
-        parameters: Dict[str, Any],
-        T: int,
-        n_age: int
-    ) -> Dict[str, np.ndarray]:
+    parameters: Dict[str, Any], T: int, n_age: int
+) -> Dict[str, np.ndarray]:
     """
     Generates a dictionary where each value is a 2D array based on the input dictionary and the parameters provided.
 
@@ -110,20 +109,20 @@ def create_definitions(
     for key, value in parameters.items():
         validate_parameter_shape(key, value, T, n_age)
         definitions[key] = resize_parameter(value, T, n_age)
-    
+
     return definitions
 
 
 def format_simulation_output(
-        compartments_evolution: np.ndarray,
-        transitions_evolution: np.ndarray,
-        compartments_idx: Dict[str, int],
-        transitions_idx: Dict[str, int], 
-        demographics: List[str],
-    ) -> Dict[str, np.ndarray]:
+    compartments_evolution: np.ndarray,
+    transitions_evolution: np.ndarray,
+    compartments_idx: Dict[str, int],
+    transitions_idx: Dict[str, int],
+    demographics: List[str],
+) -> Dict[str, np.ndarray]:
     """
     Format simulation output into dictionary with proper naming.
-    
+
     Args:
         compartments_evolution: Array of shape (timesteps, n_compartments, n_demographics)
         transitions_evolution: Array of shape (timesteps, n_transitions, n_demographics)
@@ -131,22 +130,23 @@ def format_simulation_output(
         transitions_idx: Dictionary mapping transition names to their indices
         demographics: List of demographic group names
     """
-    formatted_output = {
-        "compartments": {},
-        "transitions": {}
-    }
-    for comp, pos in compartments_idx.items(): 
-        for i, dem in enumerate(demographics): 
+    formatted_output = {"compartments": {}, "transitions": {}}
+    for comp, pos in compartments_idx.items():
+        for i, dem in enumerate(demographics):
             key = f"{comp}_{dem}"
             formatted_output["compartments"][key] = compartments_evolution[:, pos, i]
-        formatted_output["compartments"][f"{comp}_total"] = np.sum(compartments_evolution[:, pos, :], axis=1)
-    
-    for trans, pos in transitions_idx.items(): 
-        for i, dem in enumerate(demographics): 
+        formatted_output["compartments"][f"{comp}_total"] = np.sum(
+            compartments_evolution[:, pos, :], axis=1
+        )
+
+    for trans, pos in transitions_idx.items():
+        for i, dem in enumerate(demographics):
             key = f"{trans}_{dem}"
             formatted_output["transitions"][key] = transitions_evolution[:, pos, i]
-        formatted_output["transitions"][f"{trans}_total"] = np.sum(transitions_evolution[:, pos, :], axis=1)
-    
+        formatted_output["transitions"][f"{trans}_total"] = np.sum(
+            transitions_evolution[:, pos, :], axis=1
+        )
+
     return formatted_output
 
 
@@ -167,10 +167,10 @@ def str_to_date(date_str: str) -> datetime.date:
 
 
 def apply_overrides(
-        definitions: Dict[str, np.ndarray],
-        overrides: Dict[str, List[Dict[str, Any]]],
-        dates: List[datetime.date]
-    ) -> Dict[str, np.ndarray]:
+    definitions: Dict[str, np.ndarray],
+    overrides: Dict[str, List[Dict[str, Any]]],
+    dates: List[datetime.date],
+) -> Dict[str, np.ndarray]:
     """
     Applies parameter overrides to the definitions based on the specified date ranges.
 
@@ -192,13 +192,13 @@ def apply_overrides(
     """
     if not overrides:
         return definitions
-    
+
     result = definitions.copy()
-    
+
     for name, overrides in overrides.items():
         if name not in definitions:
             continue
-        
+
         for override in overrides:
             start_date = pd.Timestamp(override["start_date"])
             end_date = pd.Timestamp(override["end_date"])
@@ -233,10 +233,12 @@ def generate_unique_string(length: int = 12) -> str:
         str: A random unique string containing both uppercase and lowercase letters.
     """
     letters = string.ascii_letters  # Contains both lowercase and uppercase letters
-    return ''.join(random.choice(letters) for _ in range(length))
+    return "".join(random.choice(letters) for _ in range(length))
 
 
-def compute_days(start_date: Union[str, pd.Timestamp], end_date: Union[str, pd.Timestamp]) -> int:
+def compute_days(
+    start_date: Union[str, pd.Timestamp], end_date: Union[str, pd.Timestamp]
+) -> int:
     """
     Computes the number of days between two dates.
 
@@ -254,42 +256,44 @@ def evaluate(expr: str, env: dict) -> any:
     """
     Evaluates the expression with the given environment, allowing only whitelisted operations.
 
-    This function extends the base evaluation model to whitelist the 'Mult' (multiplication) 
-    and 'Pow' (power) operations, ensuring that only these operations are permitted during 
+    This function extends the base evaluation model to whitelist the 'Mult' (multiplication)
+    and 'Pow' (power) operations, ensuring that only these operations are permitted during
     the evaluation.
 
     Args:
-        expr (str): The expression to evaluate. It is expected to be a string containing 
+        expr (str): The expression to evaluate. It is expected to be a string containing
                     the mathematical expression to be evaluated.
-        env (dict): The environment containing variable values. Keys should be variable names 
+        env (dict): The environment containing variable values. Keys should be variable names
                     and values should be their corresponding numeric values.
 
     Returns:
-        any: The result of evaluating the expression. The result type depends on the expression 
+        any: The result of evaluating the expression. The result type depends on the expression
              and its evaluation.
 
     Raises:
-        EvalException: If there is an error in evaluating the expression, such as an invalid 
+        EvalException: If there is an error in evaluating the expression, such as an invalid
                        operation or an undefined variable.
     """
     eval_model = base_eval_model
-    eval_model.nodes.extend(['Mult', 'Pow'])
+    eval_model.nodes.extend(["Mult", "Pow"])
     return Expr(expr, model=eval_model).eval(env)
 
 
-def compute_simulation_dates(start_date: Union[str, datetime.date, np.datetime64],
-                           end_date: Union[str, datetime.date, np.datetime64],
-                           steps: Optional[int] = None,
-                           dt: float = 1.0) -> np.ndarray:
+def compute_simulation_dates(
+    start_date: Union[str, datetime.date, np.datetime64],
+    end_date: Union[str, datetime.date, np.datetime64],
+    steps: Optional[int] = None,
+    dt: float = 1.0,
+) -> np.ndarray:
     """
     Compute simulation dates including sub-day intervals.
-    
+
     Args:
         start_date: Start date
         end_date: End date
         steps: Number of steps (if None, computed from dt)
         dt: Time step in days (e.g., 1/3 for 8-hour intervals)
-    
+
     Returns:
         numpy array of datetime64 objects for each simulation step
     """
@@ -298,26 +302,24 @@ def compute_simulation_dates(start_date: Union[str, datetime.date, np.datetime64
         start_date = pd.Timestamp(start_date)
     elif isinstance(start_date, np.datetime64):
         start_date = pd.Timestamp(start_date)
-    
+
     if isinstance(end_date, str):
         end_date = pd.Timestamp(end_date)
     elif isinstance(end_date, np.datetime64):
         end_date = pd.Timestamp(end_date)
-    
+
     # Calculate total duration in days
     total_days = (end_date - start_date).total_seconds() / (24 * 3600)
-    
+
     # Calculate number of steps if not provided
     if steps is None:
         steps = int(total_days / dt)
-    
+
     # Create timestamps with proper sub-day intervals
     timestamps = pd.date_range(
-        start=start_date,
-        periods=steps + 1,
-        freq=pd.Timedelta(days=dt)
+        start=start_date, periods=steps + 1, freq=pd.Timedelta(days=dt)
     ).values
-    
+
     return timestamps
 
 
@@ -327,20 +329,24 @@ def apply_initial_conditions(epimodel, initial_conditions_dict) -> np.ndarray:
 
     Args:
         epimodel (EpiModel): An instance of an epidemiological model containing compartments and population information.
-        **kwargs: Keyword arguments where each key is a compartment name and each value is an array or list 
+        **kwargs: Keyword arguments where each key is a compartment name and each value is an array or list
                   specifying the initial population for that compartment.
 
     Returns:
-        np.ndarray: A 2D array where rows correspond to compartments and columns correspond to demographic groups, 
-                    representing the initial conditions of the model. The shape of the array is 
+        np.ndarray: A 2D array where rows correspond to compartments and columns correspond to demographic groups,
+                    representing the initial conditions of the model. The shape of the array is
                     `(number_of_compartments, number_of_demographic_groups)`.
     """
     # initialize population in different compartments and demographic groups
-    initial_conditions = np.zeros((len(epimodel.compartments), len(epimodel.population.Nk)), dtype='int')
+    initial_conditions = np.zeros(
+        (len(epimodel.compartments), len(epimodel.population.Nk)), dtype="int"
+    )
     for comp in epimodel.compartments:
-        if comp in initial_conditions_dict: 
+        if comp in initial_conditions_dict:
             if comp in epimodel.compartments:
-                initial_conditions[epimodel.compartments_idx[comp]] = initial_conditions_dict[comp]
+                initial_conditions[epimodel.compartments_idx[comp]] = (
+                    initial_conditions_dict[comp]
+                )
 
     return initial_conditions
 
@@ -361,8 +367,8 @@ def convert_to_2Darray(lst: List[Any]) -> np.ndarray:
 
 
 def combine_simulation_outputs(
-        simulation_outputs_list: List[Dict[str, np.ndarray]]
-        ) -> Dict[str, List[np.ndarray]]:
+    simulation_outputs_list: List[Dict[str, np.ndarray]],
+) -> Dict[str, List[np.ndarray]]:
     """
     Combines multiple simulation outputs into a single dictionary by appending new outputs to existing keys.
 
@@ -373,28 +379,37 @@ def combine_simulation_outputs(
         Dict[str, List[np.ndarray]]: A dictionary where keys are compartment-demographic names and values are lists of arrays.
                                      Each list contains simulation results accumulated from multiple runs.
     """
-    combined_simulation_outputs = {}    
+    combined_simulation_outputs = {}
     for simulation_outputs in simulation_outputs_list:
         if not combined_simulation_outputs:
             # If combined_dict is empty, initialize it with the new dictionary
-            for key in simulation_outputs:
-                combined_simulation_outputs[key] = [simulation_outputs[key]]
+            for key, value in simulation_outputs.items():
+                combined_simulation_outputs[key] = [value]
         else:
             # If combined_dict already has keys, append the new dictionary's values
-            for key in simulation_outputs:
+            for key, value in simulation_outputs.items():
                 if key in combined_simulation_outputs:
-                    combined_simulation_outputs[key].append(simulation_outputs[key])
+                    combined_simulation_outputs[key].append(value)
                 else:
-                    combined_simulation_outputs[key] = [simulation_outputs[key]]
+                    combined_simulation_outputs[key] = [value]
     # cast lists to arrays
-    for key in combined_simulation_outputs:
-        combined_simulation_outputs[key] = np.array(combined_simulation_outputs[key])
+    for key in combined_simulation_outputs.items():
+        combined_simulation_outputs[key] = np.array(value)
     return combined_simulation_outputs
 
 
-def multinomial(n, rates, stay_idx, mask, dt, apply_linear_approximation=False, rng=None, probs_out=None):
+def multinomial(
+    n,
+    rates,
+    stay_idx,
+    mask,
+    dt,
+    apply_linear_approximation=False,
+    rng=None,
+    probs_out=None,
+):
     """
-    Multinomial sample with a 'stay' compartment (Performance-oriented). 
+    Multinomial sample with a 'stay' compartment (Performance-oriented).
     Rates are converted to probabilities using the time step size.
 
     Args:
@@ -418,13 +433,17 @@ def multinomial(n, rates, stay_idx, mask, dt, apply_linear_approximation=False, 
         out = np.zeros_like(rates, dtype=int)
         out[stay_idx] = int(n)
         return out
-    
+
     # Convert rates to probabilities
     p = rates * dt
 
-    # Prepare an output probs buffer 
-    probs = probs_out if probs_out is not None else np.empty_like(
-        p, dtype=(p.dtype if np.issubdtype(p.dtype, np.floating) else float)
+    # Prepare an output probs buffer
+    probs = (
+        probs_out
+        if probs_out is not None
+        else np.empty_like(
+            p, dtype=(p.dtype if np.issubdtype(p.dtype, np.floating) else float)
+        )
     )
     probs.fill(0.0)
 
@@ -443,14 +462,14 @@ def multinomial(n, rates, stay_idx, mask, dt, apply_linear_approximation=False, 
         out[stay_idx] = int(n)
         return out
 
-    p_leave = -np.expm1(-H) 
+    p_leave = -np.expm1(-H)
     np.multiply(p, p_leave / H, out=probs, where=mask)
     probs[stay_idx] = 1.0 - p_leave
 
     return rng.multinomial(int(n), probs)
 
 
-def get_initial_conditions_dict(Nk, perc_dict): 
+def get_initial_conditions_dict(Nk, perc_dict):
     """
     Helper function to get initial conditions dictionary from percentage dictionary.
 
