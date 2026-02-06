@@ -120,7 +120,9 @@ class CalibrationResults:
             ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
         """
         trajectories = self.get_calibration_trajectories(generation)
-        return self._compute_quantiles(trajectories, dates, quantiles, variables, ignore_nan)
+        return self._compute_quantiles(
+            trajectories, dates, quantiles, variables, ignore_nan
+        )
 
     def get_projection_quantiles(
         self,
@@ -140,7 +142,9 @@ class CalibrationResults:
             ignore_nan: If True, use np.nanquantile to ignore NaN values. Defaults to False.
         """
         trajectories = self.get_projection_trajectories(scenario_id)
-        return self._compute_quantiles(trajectories, dates, quantiles, variables, ignore_nan)
+        return self._compute_quantiles(
+            trajectories, dates, quantiles, variables, ignore_nan
+        )
 
     def _compute_quantiles(
         self,
@@ -180,6 +184,7 @@ class CalibrationResults:
         # Check for high NaN proportions when ignore_nan is enabled
         if ignore_nan:
             import warnings
+
             for key, vals in trajectories.items():
                 nan_prop = np.isnan(vals).mean(axis=0)
                 max_nan_prop = np.max(nan_prop)
@@ -190,6 +195,8 @@ class CalibrationResults:
                     )
 
         for key, vals in trajectories.items():
-            data[key] = [val for q in quantiles for val in quantile_func(vals, q, axis=0)]
+            data[key] = [
+                val for q in quantiles for val in quantile_func(vals, q, axis=0)
+            ]
 
         return pd.DataFrame(data)

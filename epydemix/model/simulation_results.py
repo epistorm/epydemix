@@ -98,6 +98,7 @@ class SimulationResults:
         # Check for high NaN proportions when ignore_nan is enabled
         if ignore_nan:
             import warnings
+
             for comp_name, comp_data in stacked.items():
                 nan_prop = np.isnan(comp_data).mean(axis=0)
                 max_nan_prop = np.max(nan_prop)
