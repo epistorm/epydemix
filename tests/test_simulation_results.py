@@ -13,12 +13,16 @@ def mock_trajectory_data_no_nan():
     """Create mock trajectory data without NaN values."""
     dates = pd.date_range("2024-01-01", periods=10, freq="D").tolist()
     compartments = {
-        "S": np.array([1000, 990, 980, 970, 960, 950, 940, 930, 920, 910]),
-        "I": np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]),
+        "S": np.array([990, 980, 970, 960, 950, 940, 930, 920, 910, 900], dtype=float),
+        "I": np.array([10, 15, 20, 25, 30, 35, 40, 45, 50, 55], dtype=float),
+        "R": np.array([0, 5, 10, 15, 20, 25, 30, 35, 40, 45], dtype=float),
     }
-    transitions = {"S_to_I": np.array([10, 10, 10, 10, 10, 10, 10, 10, 10, 10])}
-    compartment_idx = {"S": 0, "I": 1}
-    transitions_idx = {"S_to_I": 0}
+    transitions = {
+        "S_to_I": np.array([10, 10, 10, 10, 10, 10, 10, 10, 10, 10], dtype=float),
+        "I_to_R": np.array([5, 5, 5, 5, 5, 5, 5, 5, 5, 5], dtype=float),
+    }
+    compartment_idx = {"S": 0, "I": 1, "R": 2}
+    transitions_idx = {"S_to_I": 0, "I_to_R": 1}
 
     trajectories = []
     for i in range(5):  # 5 trajectories
@@ -39,25 +43,27 @@ def mock_trajectory_data_no_nan():
 def mock_trajectory_data_with_nan():
     """Create mock trajectory data with NaN values at the beginning."""
     dates = pd.date_range("2024-01-01", periods=10, freq="D").tolist()
-    compartment_idx = {"S": 0, "I": 1}
-    transitions_idx = {"S_to_I": 0}
+    compartment_idx = {"S": 0, "I": 1, "R": 2}
+    transitions_idx = {"S_to_I": 0, "I_to_R": 1}
 
     trajectories = []
     for i in range(5):  # 5 trajectories
         # First 3 time points are NaN for some trajectories
-        s_values = np.array([np.nan, np.nan, np.nan, 970, 960, 950, 940, 930, 920, 910])
-        i_values = np.array([np.nan, np.nan, np.nan, 40, 50, 60, 70, 80, 90, 100])
-        transition_values = np.array(
-            [np.nan, np.nan, np.nan, 10, 10, 10, 10, 10, 10, 10]
-        )
+        s_values = np.array([np.nan, np.nan, np.nan, 960, 950, 940, 930, 920, 910, 900])
+        i_values = np.array([np.nan, np.nan, np.nan, 25, 30, 35, 40, 45, 50, 55])
+        r_values = np.array([np.nan, np.nan, np.nan, 15, 20, 25, 30, 35, 40, 45])
+        s_to_i_values = np.array([np.nan, np.nan, np.nan, 10, 10, 10, 10, 10, 10, 10])
+        i_to_r_values = np.array([np.nan, np.nan, np.nan, 5, 5, 5, 5, 5, 5, 5])
 
         # Vary the values slightly for each trajectory
         compartments = {
             "S": s_values * (1 + i * 0.1) if i > 0 else s_values,
             "I": i_values * (1 + i * 0.1) if i > 0 else i_values,
+            "R": r_values * (1 + i * 0.1) if i > 0 else r_values,
         }
         transitions = {
-            "S_to_I": transition_values * (1 + i * 0.1) if i > 0 else transition_values
+            "S_to_I": s_to_i_values * (1 + i * 0.1) if i > 0 else s_to_i_values,
+            "I_to_R": i_to_r_values * (1 + i * 0.1) if i > 0 else i_to_r_values,
         }
 
         traj = Trajectory(
@@ -77,28 +83,36 @@ def mock_trajectory_data_with_nan():
 def mock_trajectory_data_high_nan():
     """Create mock trajectory data with >50% NaN values."""
     dates = pd.date_range("2024-01-01", periods=10, freq="D").tolist()
-    compartment_idx = {"S": 0, "I": 1}
-    transitions_idx = {"S_to_I": 0}
+    compartment_idx = {"S": 0, "I": 1, "R": 2}
+    transitions_idx = {"S_to_I": 0, "I_to_R": 1}
 
     trajectories = []
     for i in range(5):  # 5 trajectories
         # First 6 time points are NaN (60% of data)
         s_values = np.array(
-            [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 940, 930, 920, 910]
+            [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 930, 920, 910, 900]
         )
         i_values = np.array(
-            [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 70, 80, 90, 100]
+            [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 40, 45, 50, 55]
         )
-        transition_values = np.array(
+        r_values = np.array(
+            [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 30, 35, 40, 45]
+        )
+        s_to_i_values = np.array(
             [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 10, 10, 10, 10]
+        )
+        i_to_r_values = np.array(
+            [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 5, 5, 5, 5]
         )
 
         compartments = {
             "S": s_values * (1 + i * 0.1) if i > 0 else s_values,
             "I": i_values * (1 + i * 0.1) if i > 0 else i_values,
+            "R": r_values * (1 + i * 0.1) if i > 0 else r_values,
         }
         transitions = {
-            "S_to_I": transition_values * (1 + i * 0.1) if i > 0 else transition_values
+            "S_to_I": s_to_i_values * (1 + i * 0.1) if i > 0 else s_to_i_values,
+            "I_to_R": i_to_r_values * (1 + i * 0.1) if i > 0 else i_to_r_values,
         }
 
         traj = Trajectory(
