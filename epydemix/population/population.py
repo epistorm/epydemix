@@ -675,30 +675,20 @@ def load_epydemix_population(
 
 
 def get_available_locations(
-    path_to_data: Optional[str] = None,
-    data_version: str = "vtest",
     attribute: str = "age",
+    data_version: str = "vtest",
 ) -> pd.DataFrame:
     """
-    Returns a list of available locations.
+    Returns a list of available locations from the epydemix-data repository.
 
     Args:
-        path_to_data (Optional[str]): The local path to the data directory. If None, data is fetched from GitHub.
-        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "vtest".
         attribute (str): The demographic attribute layer. Defaults to "age".
+        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "vtest".
 
     Returns:
         pd.DataFrame: A DataFrame containing the list of available locations.
     """
-
-    # If path_to_data is None, use the GitHub URL
-    is_remote = False
-    if path_to_data is None:
-        path_to_data = f"{EPYDEMIX_DATA_BASE_URL}/{data_version}/"
-        is_remote = True  # Mark as remote URL
-
-    if is_remote:
-        locations_file = path_to_data + f"data/{attribute}/locations.csv"
-    else:
-        locations_file = Path(path_to_data) / "data" / attribute / "locations.csv"
-    return pd.read_csv(locations_file)
+    locations_url = (
+        f"{EPYDEMIX_DATA_BASE_URL}/{data_version}/data/{attribute}/locations.csv"
+    )
+    return pd.read_csv(locations_url)
