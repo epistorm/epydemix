@@ -438,7 +438,11 @@ def validate_population_name(
         ValueError: If the population_name is not found in the list of locations.
     """
     # Construct the full path to the locations CSV file
-    locations_file = os.path.join(path_to_data, "data", attribute, "locations.csv")
+    # Use forward slashes for URLs, os.path.join for local paths
+    if path_to_data.startswith("http://") or path_to_data.startswith("https://"):
+        locations_file = f"{path_to_data}data/{attribute}/locations.csv"
+    else:
+        locations_file = os.path.join(path_to_data, "data", attribute, "locations.csv")
 
     # Load the locations data and extract the list of locations
     locations_list = pd.read_csv(locations_file)["location"].values
@@ -469,7 +473,11 @@ def get_primary_contacts_source(
         ValueError: If the population name is not found in the locations data.
     """
     # Construct the full path to the locations CSV file
-    locations_file = os.path.join(path_to_data, "data", attribute, "locations.csv")
+    # Use forward slashes for URLs, os.path.join for local paths
+    if path_to_data.startswith("http://") or path_to_data.startswith("https://"):
+        locations_file = f"{path_to_data}data/{attribute}/locations.csv"
+    else:
+        locations_file = os.path.join(path_to_data, "data", attribute, "locations.csv")
 
     # Load the contact matrices sources data
     contact_matrices_sources = pd.read_csv(locations_file)
