@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+* Updated data paths to match restructured `epydemix-data` repository: data now lives under `data/{attribute}/`, demographic file renamed from `age_distribution.csv` to `population.csv`, contact matrix files no longer use `contacts_matrix_` prefix, and `locations.csv` moved to `data/{attribute}/locations.csv`.
+* Added `attribute` parameter (default `"age"`) to `load_epydemix_population()`, `get_available_locations()`, and `EpiModel` to support the new attribute layer in the data directory structure.
+* Added `data_version` parameter (default `"vtest"`) to `load_epydemix_population()`, `get_available_locations()`, and `EpiModel` to allow pinning the `epydemix-data` repository to a specific git tag. Replaces the old `path_to_data_github` URL parameter.
+* Changed `supported_contacts_sources` from `List[str]` to `Dict[str, List[str]]` (keyed by attribute) in `load_epydemix_population()` and `EpiModel`, so each attribute can define its own set of valid contact sources.
+* Demographic and contact matrix aggregation logic is now only applied when `attribute == "age"`. Non-age attributes use raw data without aggregation.
+
 ### Added
 
 * Added `ignore_nan` parameter to quantile computation methods in `CalibrationResults` (`_compute_quantiles()`, `get_calibration_quantiles()`, `get_projection_quantiles()`) and `SimulationResults` (`get_quantiles()`, `get_quantiles_transitions()`, `get_quantiles_compartments()`) to handle NaN values from epidemic start date priors. Uses `np.nanquantile` when enabled, with warnings for variables exceeding 50% NaN values.
