@@ -16,16 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 * Added `data_version` parameter (default `"vtest"`) to `load_epydemix_population()`, `get_available_locations()`, and `EpiModel` to allow pinning the `epydemix-data` repository to a specific git tag. Replaces the old `path_to_data_github` URL parameter.
 * Changed `supported_contacts_sources` from `List[str]` to `Dict[str, List[str]]` (keyed by attribute) in `load_epydemix_population()` and `EpiModel`, so each attribute can define its own set of valid contact sources.
 * Demographic and contact matrix aggregation logic is now only applied when `attribute == "age"`. Non-age attributes use raw data without aggregation.
+* Migrated linting and formatting tooling to [Ruff](https://docs.astral.sh/ruff/), replacing the previous linting setup.
+* Simplified `get_available_locations()` to always fetch from remote GitHub URL, removing the `path_to_data` parameter. Now only accepts `attribute` and `data_version` parameters.
 
 ### Added
 
 * Added `ignore_nan` parameter to quantile computation methods in `CalibrationResults` (`_compute_quantiles()`, `get_calibration_quantiles()`, `get_projection_quantiles()`) and `SimulationResults` (`get_quantiles()`, `get_quantiles_transitions()`, `get_quantiles_compartments()`) to handle NaN values from epidemic start date priors. Uses `np.nanquantile` when enabled, with warnings for variables exceeding 50% NaN values.
 * Comprehensive test coverage for the new `ignore_nan` functionality.
 * Added `variables` parameter to trajectory and quantile methods in `CalibrationResults` (`get_calibration_trajectories()`, `get_projection_trajectories()`, `get_calibration_quantiles()`, `get_projection_quantiles()`) and `SimulationResults` (`get_quantiles()`, `get_quantiles_transitions()`, `get_quantiles_compartments()`) to filter variables before array stacking, reducing memory usage.
-
-### Changed
-
-* Migrated linting and formatting tooling to [Ruff](https://docs.astral.sh/ruff/), replacing the previous linting setup.
 * Added a `CONTRIBUTING.md` guide for new contributors.
 * Added a CI workflow (`.github/workflows/ci.yml`) and pre-commit configuration (`.pre-commit-config.yaml`) for automated linting checks.
 * Added `dev-requirements.txt` with development dependencies.
