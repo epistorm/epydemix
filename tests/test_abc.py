@@ -173,3 +173,93 @@ def test_abc_runtime_limits(basic_abc_sampler):
         verbose=False,
     )
     assert len(results.posterior_distributions) > 0
+
+
+def test_abc_smc_runtime_limit_returns_complete_generations(basic_abc_sampler):
+    """Test that SMC with max_time returns only complete generations (no partial particles)."""
+    results = basic_abc_sampler.calibrate(
+        strategy="smc",
+        num_particles=10,
+        num_generations=100,
+        max_time=timedelta(seconds=1),
+        verbose=False,
+    )
+
+    # Should have at least 1 generation (gen 0 with epsilon=inf is fast)
+    assert len(results.posterior_distributions) >= 1
+
+    # Every generation must have exactly num_particles particles
+    for gen, posterior in results.posterior_distributions.items():
+        assert len(posterior) == 10, (
+            f"Generation {gen} has {len(posterior)} particles, expected 10"
+        )
+
+
+def test_abc_smc_budget_limit_returns_complete_generations(basic_abc_sampler):
+    """Test that SMC with total_simulations_budget returns only complete generations."""
+    results = basic_abc_sampler.calibrate(
+        strategy="smc",
+        num_particles=10,
+        num_generations=100,
+        total_simulations_budget=25,
+        verbose=False,
+    )
+
+    # Every generation must have exactly num_particles particles
+    for gen, posterior in results.posterior_distributions.items():
+        assert len(posterior) == 10, (
+            f"Generation {gen} has {len(posterior)} particles, expected 10"
+        )
+
+
+def test_abc_smc_gen0_interrupted_returns_empty_results():
+    """Test that SMC returns empty CalibrationResults if gen 0 is interrupted."""
+    # Use a simulation function that is slow enough to trigger max_time during gen 0
+    import time
+
+    def slow_simulation(params):
+        time.sleep(0.1)
+        return {"data": np.array([1.0] * 10)}
+
+    priors = {
+        "beta": stats.uniform(0.1, 0.5),
+        "gamma": stats.uniform(0.05, 0.2),
+    }
+
+    sampler = ABCSampler(
+        simulation_function=slow_simulation,
+        priors=priors,
+        parameters={"dt": 0.1},
+        observed_data=np.array([90, 82, 75, 68, 62, 57, 52, 48, 44, 40]),
+    )
+
+    # Very tight epsilon so most particles are rejected, combined with very short time
+    results = sampler.calibrate(
+        strategy="smc",
+        num_particles=1000,
+        num_generations=5,
+        epsilon_schedule=[0.001, 0.001, 0.001, 0.001, 0.001],
+        max_time=timedelta(milliseconds=50),
+        verbose=False,
+    )
+
+    # Should return empty CalibrationResults (no generations completed)
+    assert results.calibration_strategy == "smc"
+    assert len(results.posterior_distributions) == 0
+
+
+def test_abc_smc_without_limits_completes_all_generations(basic_abc_sampler):
+    """Test that SMC completes all generations when no time or budget limits are set."""
+    results = basic_abc_sampler.calibrate(
+        strategy="smc",
+        num_particles=10,
+        num_generations=3,
+        verbose=False,
+    )
+
+    # Should complete all 3 generations
+    assert len(results.posterior_distributions) == 3
+
+    # Each generation should have exactly 10 particles
+    for gen, posterior in results.posterior_distributions.items():
+        assert len(posterior) == 10
