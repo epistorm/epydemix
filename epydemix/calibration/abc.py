@@ -152,7 +152,10 @@ class ABCSampler:
 
         # Run generations
         start_time = datetime.now()
+        # _initialize_particles and _run_smc_generation receive n_simulations from
+        # previous generation and return the updated (accumulated) total.
         n_simulations = 0
+        results = None
 
         for gen in range(num_generations):
             start_generation_time = datetime.now()
@@ -168,8 +171,19 @@ class ABCSampler:
                         f"\nGeneration {gen + 1}/{num_generations} (epsilon: {epsilon:.6f})"
                     )
                 # Initialize particles, weights, distances, simulations
-                new_gen = self._initialize_particles(num_particles, epsilon)
-                n_simulations += new_gen["n_simulations"]
+                new_gen = self._initialize_particles(
+                    num_particles,
+                    epsilon,
+                    start_time,
+                    max_time,
+                    total_simulations_budget,
+                    n_simulations,
+                )
+                if new_gen is None:
+                    if verbose:
+                        print("Maximum time or budget reached during generation 0")
+                    break
+                n_simulations = new_gen["n_simulations"]
 
                 # Store results for generation 0
                 results = self._create_results(
@@ -208,9 +222,23 @@ class ABCSampler:
 
                 # Run generation
                 new_gen = self._run_smc_generation(
-                    particles, weights, epsilon, num_particles, perturbations
+                    particles,
+                    weights,
+                    epsilon,
+                    num_particles,
+                    perturbations,
+                    start_time,
+                    max_time,
+                    total_simulations_budget,
+                    n_simulations,
                 )
-                n_simulations += new_gen["n_simulations"]
+                if new_gen is None:
+                    if verbose:
+                        print(
+                            f"Maximum time or budget reached during generation {gen + 1}, keeping last complete generation"
+                        )
+                    break
+                n_simulations = new_gen["n_simulations"]
 
                 # Store results
                 results.posterior_distributions[gen] = pd.DataFrame(
@@ -241,7 +269,7 @@ class ABCSampler:
                 )
                 print(f"\tElapsed time: {formatted_time}")
 
-            # Check stopping conditions
+            # Check stopping conditions between generations
             if self._check_stopping_conditions(
                 epsilon,
                 minimum_epsilon,
@@ -251,6 +279,14 @@ class ABCSampler:
                 total_simulations_budget,
             ):
                 break
+
+        # If generation 0 was interrupted before completing, return empty results
+        if results is None:
+            results = CalibrationResults(
+                calibration_strategy="smc",
+                observed_data=self.observed_data,
+                priors=self.priors,
+            )
 
         return results
 
@@ -419,26 +455,57 @@ class ABCSampler:
         max_time: Optional[timedelta],
         n_simulations: int,
         total_simulations_budget: Optional[int],
+        verbose: bool = True,
     ) -> bool:
-        """Check if any stopping condition is met."""
+        """Check if any stopping condition is met (epsilon convergence, time limit, or budget).
+
+        Use verbose=False from per-simulation calls to avoid repeated output.
+
+        Args:
+            epsilon (float, optional): Current epsilon value
+            minimum_epsilon (float, optional): Minimum allowable epsilon value
+            start_time (datetime): Start time of the calibration run
+            max_time (timedelta, optional): Maximum allowed runtime
+            n_simulations (int): Number of simulations performed so far
+            total_simulations_budget (int, optional): Maximum number of allowed simulations
+            verbose (bool): Whether to print a message when a condition is met
+
+        Returns:
+            bool: True if any stopping condition is met, False otherwise
+        """
         if minimum_epsilon and epsilon and epsilon < minimum_epsilon:
-            print("Minimum epsilon reached")
+            if verbose:
+                print("Minimum epsilon reached")
             return True
         if max_time and datetime.now() - start_time > max_time:
-            print("Maximum time reached")
+            if verbose:
+                print("Maximum time reached")
             return True
         if total_simulations_budget and n_simulations > total_simulations_budget:
-            print("Total simulations budget reached")
+            if verbose:
+                print("Total simulations budget reached")
             return True
         return False
 
-    def _initialize_particles(self, num_particles, epsilon):
+    def _initialize_particles(
+        self,
+        num_particles,
+        epsilon,
+        start_time=None,
+        max_time=None,
+        total_simulations_budget=None,
+        n_simulations=0,
+    ):
         """
         Initialize the first generation of particles by sampling from priors.
 
         Args:
             num_particles (int): Number of particles to generate
             epsilon (float): Epsilon threshold for initial generation
+            start_time (datetime, optional): Start time for time limit checking
+            max_time (timedelta, optional): Maximum allowed runtime
+            total_simulations_budget (int, optional): Maximum number of simulations
+            n_simulations (int): Running count of simulations performed so far
 
         Returns:
             tuple: (particles, weights, distances, simulations) where
@@ -446,12 +513,24 @@ class ABCSampler:
                 - weights: numpy array of uniform weights
                 - distances: numpy array of distances between simulations and observed data
                 - simulations: list of simulation results
+                Returns None if stopped early by time/budget limits.
         """
         particles, weights, distances, simulations = [], [], [], []
 
-        n_simulations = 0
         # Sample from priors and run simulations
         while len(particles) < num_particles:
+            # Check stopping conditions per simulation
+            if self._check_stopping_conditions(
+                None,
+                None,
+                start_time,
+                max_time,
+                n_simulations,
+                total_simulations_budget,
+                verbose=False,
+            ):
+                return None
+
             params = sample_prior(self.priors, self.param_names)
             full_params = {**self.parameters, **dict(zip(self.param_names, params))}
             simulated_data = self.simulation_function(full_params)
@@ -481,13 +560,31 @@ class ABCSampler:
         epsilon: float,
         num_particles: int,
         perturbations: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Run a single generation of ABC-SMC."""
+        start_time=None,
+        max_time=None,
+        total_simulations_budget=None,
+        n_simulations=0,
+    ) -> Optional[Dict[str, Any]]:
+        """Run a single generation of ABC-SMC.
+
+        Returns None if stopped early by time/budget limits.
+        """
         new_particles, new_weights, new_distances, new_simulations = [], [], [], []
 
-        n_simulations = 0
         for _ in range(num_particles):
             while True:
+                # Check stopping conditions inside inner loop
+                if self._check_stopping_conditions(
+                    None,
+                    None,
+                    start_time,
+                    max_time,
+                    n_simulations,
+                    total_simulations_budget,
+                    verbose=False,
+                ):
+                    return None
+
                 # Resample a particle based on weights
                 index = np.random.choice(len(particles), p=weights / weights.sum())
                 candidate_params = particles[index]
