@@ -595,6 +595,19 @@ def plot_contact_matrix(
     return ax
 
 
+def _format_human_readable(value: float) -> str:
+    """Format a number with K/M/B suffixes for readability."""
+    abs_value = abs(value)
+    if abs_value >= 1e9:
+        return f"{value / 1e9:.1f}B"
+    elif abs_value >= 1e6:
+        return f"{value / 1e6:.1f}M"
+    elif abs_value >= 1e3:
+        return f"{value / 1e3:.1f}K"
+    else:
+        return f"{value:.0f}"
+
+
 def plot_population(
     population: Any,
     ax: Optional[plt.Axes] = None,
@@ -607,9 +620,9 @@ def plot_population(
     bar_width: float = 0.8,
     show_grid: bool = True,
     ylabel: Optional[str] = None,
-    xlabel: str = "Age group",
+    xlabel: str = "Demographic group",
     show_values: bool = True,
-    fmt: str = ".1f",
+    fmt: Optional[str] = None,
     value_fontsize: Optional[int] = None,
 ) -> plt.Axes:
     """
@@ -629,7 +642,8 @@ def plot_population(
         ylabel: Y-axis label. If None, uses default based on show_perc
         xlabel: X-axis label
         show_values: Whether to show values above bars
-        fmt: Format string for values
+        fmt: Format string for values. If None, uses ".1f%" for percentages
+            and human-readable suffixes (K/M/B) for absolute numbers.
         value_fontsize: Font size for bar values. If None, uses fontsize
 
     Returns:
@@ -651,10 +665,16 @@ def plot_population(
         value_fontsize = value_fontsize or fontsize
         for bar in bars:
             height = bar.get_height()
+            if fmt is not None:
+                label = format(height, fmt)
+            elif show_perc:
+                label = f"{height:.1f}%"
+            else:
+                label = _format_human_readable(height)
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 height,
-                format(height, fmt),
+                label,
                 ha="center",
                 va="bottom",
                 fontsize=value_fontsize,
