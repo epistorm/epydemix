@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 * Added a `CONTRIBUTING.md` guide for new contributors.
 * Added a CI workflow (`.github/workflows/ci.yml`) and pre-commit configuration (`.pre-commit-config.yaml`) for automated linting checks.
 * Added `dev-requirements.txt` with development dependencies.
+* Added Tutorial 11: Using Epistorm-Mix Contact Matrices, demonstrating the new `sex` and `race_ethnicity` demographic attributes with visualization and simulation examples.
 
 ---
 
