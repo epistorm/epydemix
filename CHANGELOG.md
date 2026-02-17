@@ -31,7 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 * Added a `CONTRIBUTING.md` guide for new contributors.
 * Added a CI workflow (`.github/workflows/ci.yml`) and pre-commit configuration (`.pre-commit-config.yaml`) for automated linting checks.
 * Added `dev-requirements.txt` with development dependencies.
-* Added Tutorial 11: Using Epistorm-Mix Contact Matrices, demonstrating the new `sex` and `race_ethnicity` demographic attributes with visualization and simulation examples.
+* Improved `plot_population()`: bar labels now use human-readable suffixes (K/M/B) for absolute numbers and append `%` for percentages by default. Changed default `xlabel` from `"Age group"` to `"Demographic group"`.
+
+### Tutorials
+
+* Added Tutorial 11: Using [Epistorm-Mix](https://www.epistorm.org/data/epistorm-mix) Contact Matrices, demonstrating the new `sex` and `race_ethnicity` demographic attributes based on [Litvinova et al. (2025)](https://www.medrxiv.org/content/10.1101/2025.11.20.25340662v1), with visualization of contact matrices, comparison of mean contacts across demographic groups, and SIR simulations with attack rate analysis.
+
+### Data
+
+* Added two new demographic attributes in **epydemix-data**: `"sex"` and `"race_ethnicity"`, with population and contact matrix data for the United States.
+* Added `"litvinova_2025"` contact matrices for all three attributes (`age`, `sex`, `race_ethnicity`).
 
 ---
 
