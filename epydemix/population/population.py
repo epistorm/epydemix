@@ -542,9 +542,11 @@ def load_epydemix_population(
     layers: List[str] = ["school", "work", "home", "community"],
     age_group_mapping: Optional[Dict[str, List[str]]] = None,
     supported_contacts_sources: Dict[str, List[str]] = {
-        "age": ["prem_2017", "prem_2021", "mistry_2021"]
+        "age": ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"],
+        "sex": ["litvinova_2025"],
+        "race_ethnicity": ["litvinova_2025"],
     },
-    data_version: str = "vtest",
+    data_version: str = "vtest-epistorm-mix",
     attribute: str = "age",
 ) -> "Population":
     """
@@ -607,14 +609,14 @@ def load_epydemix_population(
 
     if attribute == "age":
         # Handle contact matrices aggregation (age-specific)
-        if contacts_source in ["prem_2017", "prem_2021"]:
+        if contacts_source in ["prem_2017", "prem_2021", "litvinova_2025"]:
             Nk = aggregate_demographic(Nk, demographic_grouping_prem)
 
         # Determine age group mapping
         if age_group_mapping is None:
             age_group_mapping = (
                 contacts_age_group_mapping_prem
-                if contacts_source in ["prem_2017", "prem_2021"]
+                if contacts_source in ["prem_2017", "prem_2021", "litvinova_2025"]
                 else contacts_age_group_mapping_mistry
             )
 
@@ -676,7 +678,7 @@ def load_epydemix_population(
 
 def get_available_locations(
     attribute: str = "age",
-    data_version: str = "vtest",
+    data_version: str = "vtest-epistorm-mix",
 ) -> pd.DataFrame:
     """
     Returns a list of available locations from the epydemix-data repository.

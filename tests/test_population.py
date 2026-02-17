@@ -151,3 +151,25 @@ def test_population_repr(basic_population):
 def test_online_population_import():
     load_epydemix_population("Italy")
     get_available_locations()
+
+
+def test_online_population_import_sex():
+    pop = load_epydemix_population("United_States", attribute="sex")
+    assert pop.num_groups > 0
+    assert len(pop.contact_matrices) > 0
+
+
+def test_online_population_import_race_ethnicity():
+    pop = load_epydemix_population("United_States", attribute="race_ethnicity")
+    assert pop.num_groups > 0
+    assert len(pop.contact_matrices) > 0
+
+
+def test_get_available_locations_sex():
+    locations = get_available_locations(attribute="sex")
+    assert len(locations) > 0
+
+
+def test_get_available_locations_race_ethnicity():
+    locations = get_available_locations(attribute="race_ethnicity")
+    assert len(locations) > 0

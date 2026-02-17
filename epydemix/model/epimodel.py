@@ -47,7 +47,7 @@ class EpiModel:
         age_group_mapping: Optional[Dict] = None,
         supported_contacts_sources: Optional[Dict] = None,
         use_default_population: bool = True,
-        data_version: str = "vtest",
+        data_version: str = "vtest-epistorm-mix",
         attribute: str = "age",
     ) -> None:
         """
@@ -64,9 +64,10 @@ class EpiModel:
             contacts_source (str or None, optional): The source of contact data. If None, the function will automatically detect the source.
             age_group_mapping (dict or None, optional): A mapping of age groups for the population.
             supported_contacts_sources (list or None, optional): A list of supported contact data sources. Defaults to
-                ["prem_2017", "prem_2021", "mistry_2021"] if None.
+                ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"] for age,
+                ["litvinova_2025"] for sex and race_ethnicity if None.
             use_default_population (bool, optional): If True, creates a default population; if False, tries to load the population from the provided path and population name. Defaults to True.
-            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "vtest".
+            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "vtest-epistorm-mix".
             attribute (str, optional): The demographic attribute layer. Defaults to "age".
         Returns:
             None
@@ -100,7 +101,9 @@ class EpiModel:
         # Handle default contact sources if not provided
         if supported_contacts_sources is None:
             supported_contacts_sources = {
-                "age": ["prem_2017", "prem_2021", "mistry_2021"]
+                "age": ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"],
+                "sex": ["litvinova_2025"],
+                "race_ethnicity": ["litvinova_2025"],
             }
 
         # Load or create population based on use_default_population flag
@@ -181,7 +184,7 @@ class EpiModel:
         age_group_mapping: Optional[Dict],
         supported_contacts_sources: Dict,
         use_default_population: bool,
-        data_version: str = "vtest",
+        data_version: str = "vtest-epistorm-mix",
         attribute: str = "age",
     ) -> Population:
         """
@@ -229,7 +232,7 @@ class EpiModel:
         contacts_source: Optional[str] = None,
         age_group_mapping: Optional[Dict] = None,
         supported_contacts_sources: Optional[Dict] = None,
-        data_version: str = "vtest",
+        data_version: str = "vtest-epistorm-mix",
         attribute: str = "age",
     ) -> None:
         """
@@ -243,8 +246,9 @@ class EpiModel:
             contacts_source (str or None, optional): The source of contact data. If None, the function will attempt to determine the source automatically.
             age_group_mapping (dict or None, optional): A mapping for age groups. If None, a default mapping is used.
             supported_contacts_sources (list or None, optional): A list of supported contact data sources (e.g., "prem_2017", "prem_2021").
-                Defaults to ["prem_2017", "prem_2021", "mistry_2021"] if None.
-            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "vtest".
+                Defaults to ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"] for age,
+                ["litvinova_2025"] for sex and race_ethnicity if None.
+            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "vtest-epistorm-mix".
             attribute (str, optional): The demographic attribute layer. Defaults to "age".
 
         Returns:
@@ -257,7 +261,9 @@ class EpiModel:
         # Handle default contact sources if not provided
         if supported_contacts_sources is None:
             supported_contacts_sources = {
-                "age": ["prem_2017", "prem_2021", "mistry_2021"]
+                "age": ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"],
+                "sex": ["litvinova_2025"],
+                "race_ethnicity": ["litvinova_2025"],
             }
 
         # Load a new population using the same logic as in the constructor
