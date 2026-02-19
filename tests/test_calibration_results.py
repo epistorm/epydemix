@@ -374,3 +374,59 @@ def test_projection_quantiles_with_variables_filter(mock_data_with_transitions):
     assert "S_to_I_total" not in quantiles_df.columns
     assert "I_to_R_total" not in quantiles_df.columns
     assert len(quantiles_df) == 10 * 3  # 10 timesteps * 3 quantiles
+
+
+# --- Non-numeric array skipping tests ---
+
+
+@pytest.fixture
+def mock_data_with_dates():
+    """Create mock data where trajectories include a non-numeric 'dates' key."""
+    import pandas as pd
+
+    trajectories = []
+    dates = pd.date_range("2024-01-01", periods=10, freq="D")
+    for i in range(5):
+        scale = 1 + i * 0.1
+        traj = {
+            "S": np.array([1000, 990, 980, 970, 960, 950, 940, 930, 920, 910]) * scale,
+            "I": np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]) * scale,
+            "dates": dates,
+        }
+        trajectories.append(traj)
+
+    calib_results = CalibrationResults()
+    calib_results.selected_trajectories[0] = trajectories
+    calib_results.projections["baseline"] = trajectories
+    return calib_results
+
+
+def test_calibration_quantiles_skips_non_numeric(mock_data_with_dates):
+    """Test that non-numeric arrays (e.g. dates) are skipped in quantile computation."""
+    quantiles_df = mock_data_with_dates.get_calibration_quantiles(quantiles=[0.5])
+
+    assert "S" in quantiles_df.columns
+    assert "I" in quantiles_df.columns
+    assert "dates" not in quantiles_df.columns
+
+
+def test_projection_quantiles_skips_non_numeric(mock_data_with_dates):
+    """Test that non-numeric arrays (e.g. dates) are skipped in projection quantiles."""
+    quantiles_df = mock_data_with_dates.get_projection_quantiles(
+        quantiles=[0.5], scenario_id="baseline"
+    )
+
+    assert "S" in quantiles_df.columns
+    assert "I" in quantiles_df.columns
+    assert "dates" not in quantiles_df.columns
+
+
+def test_calibration_quantiles_skips_non_numeric_with_ignore_nan(mock_data_with_dates):
+    """Test that the NaN check also skips non-numeric arrays."""
+    quantiles_df = mock_data_with_dates.get_calibration_quantiles(
+        quantiles=[0.5], ignore_nan=True
+    )
+
+    assert "S" in quantiles_df.columns
+    assert "I" in quantiles_df.columns
+    assert "dates" not in quantiles_df.columns
