@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 * Added a CI workflow (`.github/workflows/ci.yml`) and pre-commit configuration (`.pre-commit-config.yaml`) for automated linting checks.
 * Added `dev-requirements.txt` with development dependencies.
 
+### Fixed
+
+* Fixed `TypeError: ufunc 'isnan' not supported` when `_compute_quantiles` encounters non-numeric arrays (e.g., dates) with `ignore_nan=True`. The method now skips non-numeric arrays in NaN checks and quantile computation loops.
+
 ---
 
 ## [1.0.2] – 2025-10-30
