@@ -214,7 +214,9 @@ class EpiModel:
             # Create a default population manually
             population = Population(name=population_name)
             population.add_contact_matrix(np.array([[1.0]]))  # Default contact matrix
-            population.add_population(np.array([default_population_size]))  # Default population size
+            population.add_population(
+                np.array([default_population_size])
+            )  # Default population size
             return population
         else:
             # Load population using load_population, which handles both online and local sources
