@@ -13,11 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 * Added support for two new demographic attributes: `"sex"` and `"race_ethnicity"`, with the same folder structure as `"age"`.
 * Added `"litvinova_2025"` as a new contact source. For `"age"`, it uses the same mapping as `"prem"`. For `"sex"` and `"race_ethnicity"`, it is the only available contact source.
-* Updated default `data_version` from `"vtest"` to `"vtest-epistorm-mix"` across `load_epydemix_population()`, `get_available_locations()`, and `EpiModel`.
+* Updated default `data_version` from `"vtest"` to `"v1.1.0"` across `load_epydemix_population()`, `get_available_locations()`, and `EpiModel`.
 * Updated `supported_contacts_sources` defaults to include `"sex"` and `"race_ethnicity"` keys with `["litvinova_2025"]`, and added `"litvinova_2025"` to the `"age"` sources list.
 * Updated data paths to match restructured `epydemix-data` repository: data now lives under `data/{attribute}/`, demographic file renamed from `age_distribution.csv` to `population.csv`, contact matrix files no longer use `contacts_matrix_` prefix, and `locations.csv` moved to `data/{attribute}/locations.csv`.
 * Added `attribute` parameter (default `"age"`) to `load_epydemix_population()`, `get_available_locations()`, and `EpiModel` to support the new attribute layer in the data directory structure.
-* Added `data_version` parameter (default `"vtest"`) to `load_epydemix_population()`, `get_available_locations()`, and `EpiModel` to allow pinning the `epydemix-data` repository to a specific git tag. Replaces the old `path_to_data_github` URL parameter.
+* Added `data_version` parameter (default `"v1.1.0"`) to `load_epydemix_population()`, `get_available_locations()`, and `EpiModel` to allow pinning the `epydemix-data` repository to a specific git tag. Replaces the old `path_to_data_github` URL parameter.
 * Changed `supported_contacts_sources` from `List[str]` to `Dict[str, List[str]]` (keyed by attribute) in `load_epydemix_population()` and `EpiModel`, so each attribute can define its own set of valid contact sources.
 * Demographic and contact matrix aggregation logic is now only applied when `attribute == "age"`. Non-age attributes use raw data without aggregation.
 * Migrated linting and formatting tooling to [Ruff](https://docs.astral.sh/ruff/), replacing the previous linting setup.
