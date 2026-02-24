@@ -643,7 +643,7 @@ def load_epydemix_population(
         layers (List[str]): The layers of contact matrices to load.
         age_group_mapping (Optional[Dict[str, List[str]]]): Mapping of age groups. If None, defaults based on contacts_source.
         supported_contacts_sources (Dict[str, List[str]]): Dict mapping attribute names to their supported contact sources.
-        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "vtest".
+        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
         attribute (str): The demographic attribute layer. Defaults to "age".
 
     Returns:
@@ -749,7 +749,7 @@ def get_available_locations(
 
     Args:
         attribute (str): The demographic attribute layer. Defaults to "age".
-        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "vtest".
+        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
 
     Returns:
         pd.DataFrame: A DataFrame containing the list of available locations.
