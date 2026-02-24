@@ -5,9 +5,9 @@ sys.path.insert(0, os.path.abspath("../.."))
 
 
 project = "epydemix"
-copyright = "2025, The epydemix developers"
+copyright = "2026, The epydemix developers"
 author = "The epydemix developers"
-release = "1.0.2"
+release = "1.1.0"
 
 extensions = [
     "sphinx.ext.autodoc",
