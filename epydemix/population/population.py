@@ -434,28 +434,50 @@ def _get_locations_path(path_to_data: str, attribute: str, is_remote: bool) -> s
         if is_remote:
             return f"{path_to_data}data/other_attributes/{attribute}/locations.csv"
         else:
-            return os.path.join(path_to_data, "data", "other_attributes", attribute, "locations.csv")
+            return os.path.join(
+                path_to_data, "data", "other_attributes", attribute, "locations.csv"
+            )
 
 
-def _get_demographic_path(path_to_data: str, attribute: str, population_name: str, is_remote: bool):
+def _get_demographic_path(
+    path_to_data: str, attribute: str, population_name: str, is_remote: bool
+):
     """Returns the path to the demographic file for the given attribute and population."""
     if attribute == "age":
         rel = f"data/{population_name}/demographic/age_distribution.csv"
         if is_remote:
             return path_to_data + rel
         else:
-            return Path(path_to_data) / "data" / population_name / "demographic" / "age_distribution.csv"
+            return (
+                Path(path_to_data)
+                / "data"
+                / population_name
+                / "demographic"
+                / "age_distribution.csv"
+            )
     else:
         rel = f"data/other_attributes/{attribute}/{population_name}/demographic/population.csv"
         if is_remote:
             return path_to_data + rel
         else:
-            return Path(path_to_data) / "data" / "other_attributes" / attribute / population_name / "demographic" / "population.csv"
+            return (
+                Path(path_to_data)
+                / "data"
+                / "other_attributes"
+                / attribute
+                / population_name
+                / "demographic"
+                / "population.csv"
+            )
 
 
 def _get_contact_matrix_path(
-    path_to_data: str, attribute: str, population_name: str,
-    contacts_source: str, layer_name: str, is_remote: bool
+    path_to_data: str,
+    attribute: str,
+    population_name: str,
+    contacts_source: str,
+    layer_name: str,
+    is_remote: bool,
 ):
     """Returns the path to a contact matrix CSV for the given attribute, population, source, and layer."""
     filename = f"contacts_matrix_{layer_name}.csv"
@@ -464,13 +486,29 @@ def _get_contact_matrix_path(
         if is_remote:
             return path_to_data + rel
         else:
-            return Path(path_to_data) / "data" / population_name / "contact_matrices" / contacts_source / filename
+            return (
+                Path(path_to_data)
+                / "data"
+                / population_name
+                / "contact_matrices"
+                / contacts_source
+                / filename
+            )
     else:
         rel = f"data/other_attributes/{attribute}/{population_name}/contact_matrices/{contacts_source}/{filename}"
         if is_remote:
             return path_to_data + rel
         else:
-            return Path(path_to_data) / "data" / "other_attributes" / attribute / population_name / "contact_matrices" / contacts_source / filename
+            return (
+                Path(path_to_data)
+                / "data"
+                / "other_attributes"
+                / attribute
+                / population_name
+                / "contact_matrices"
+                / contacts_source
+                / filename
+            )
 
 
 def validate_population_name(
@@ -487,7 +525,9 @@ def validate_population_name(
     Raises:
         ValueError: If the population_name is not found in the list of locations.
     """
-    is_remote = path_to_data.startswith("http://") or path_to_data.startswith("https://")
+    is_remote = path_to_data.startswith("http://") or path_to_data.startswith(
+        "https://"
+    )
     locations_file = _get_locations_path(path_to_data, attribute, is_remote)
 
     # Load the locations data and extract the list of locations
@@ -518,7 +558,9 @@ def get_primary_contacts_source(
     Raises:
         ValueError: If the population name is not found in the locations data.
     """
-    is_remote = path_to_data.startswith("http://") or path_to_data.startswith("https://")
+    is_remote = path_to_data.startswith("http://") or path_to_data.startswith(
+        "https://"
+    )
     locations_file = _get_locations_path(path_to_data, attribute, is_remote)
 
     # Load the contact matrices sources data
@@ -632,7 +674,9 @@ def load_epydemix_population(
         validate_contacts_source(contacts_source, attribute_sources)
 
     # Load demographic data
-    demographic_path = _get_demographic_path(path_to_data, attribute, population_name, is_remote)
+    demographic_path = _get_demographic_path(
+        path_to_data, attribute, population_name, is_remote
+    )
     df = pd.read_csv(demographic_path)
 
     Nk = df  # Assign the loaded DataFrame
@@ -666,7 +710,12 @@ def load_epydemix_population(
     # Load contact matrices
     for layer_name in layers:
         contact_matrix_path = _get_contact_matrix_path(
-            path_to_data, attribute, population_name, contacts_source, layer_name, is_remote
+            path_to_data,
+            attribute,
+            population_name,
+            contacts_source,
+            layer_name,
+            is_remote,
         )
         C = pd.read_csv(contact_matrix_path, header=None).values
 
