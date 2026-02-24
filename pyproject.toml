@@ -10,6 +10,7 @@ version = "1.0.2"
 description = "A Python package for epidemic modeling, simulation, and calibration"
 authors = [
     { name = "Nicolò Gozzi", email = "nic.gozzi@gmail.com" }, 
+    { name = "Minami Ueda", email = "ueda.m@northeastern.edu" },
     { name = "Corrado Gioannini", email = "corrado.gioannini@isi.it" },
     { name = "Luca Rossi", email = "luca.rossi@isi.it" },
     { name = "Nicola Perra", email = "nicolaperra@gmail.com" },
