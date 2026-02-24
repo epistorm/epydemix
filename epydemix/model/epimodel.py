@@ -48,7 +48,7 @@ class EpiModel:
         supported_contacts_sources: Optional[Dict] = None,
         use_default_population: bool = True,
         default_population_size: int = 100000,
-        data_version: str = "vtest-epistorm-mix",
+        data_version: str = "v1.1.0",
         attribute: str = "age",
     ) -> None:
         """
@@ -69,7 +69,7 @@ class EpiModel:
                 ["litvinova_2025"] for sex and race_ethnicity if None.
             use_default_population (bool, optional): If True, creates a default population; if False, tries to load the population from the provided path and population name. Defaults to True.
             default_population_size (int, optional): The size of the default population when use_default_population is True. Defaults to 100000.
-            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "vtest-epistorm-mix".
+            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
             attribute (str, optional): The demographic attribute layer. Defaults to "age".
         Returns:
             None
@@ -188,7 +188,7 @@ class EpiModel:
         supported_contacts_sources: Dict,
         use_default_population: bool,
         default_population_size: int = 100000,
-        data_version: str = "vtest-epistorm-mix",
+        data_version: str = "v1.1.0",
         attribute: str = "age",
     ) -> Population:
         """
@@ -239,7 +239,7 @@ class EpiModel:
         contacts_source: Optional[str] = None,
         age_group_mapping: Optional[Dict] = None,
         supported_contacts_sources: Optional[Dict] = None,
-        data_version: str = "vtest-epistorm-mix",
+        data_version: str = "v1.1.0",
         attribute: str = "age",
     ) -> None:
         """
@@ -255,7 +255,7 @@ class EpiModel:
             supported_contacts_sources (list or None, optional): A list of supported contact data sources (e.g., "prem_2017", "prem_2021").
                 Defaults to ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"] for age,
                 ["litvinova_2025"] for sex and race_ethnicity if None.
-            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "vtest-epistorm-mix".
+            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
             attribute (str, optional): The demographic attribute layer. Defaults to "age".
 
         Returns:

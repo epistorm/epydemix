@@ -630,7 +630,7 @@ def load_epydemix_population(
         "sex": ["litvinova_2025"],
         "race_ethnicity": ["litvinova_2025"],
     },
-    data_version: str = "vtest-epistorm-mix",
+    data_version: str = "v1.1.0",
     attribute: str = "age",
 ) -> "Population":
     """
@@ -742,7 +742,7 @@ def load_epydemix_population(
 
 def get_available_locations(
     attribute: str = "age",
-    data_version: str = "vtest-epistorm-mix",
+    data_version: str = "v1.1.0",
 ) -> pd.DataFrame:
     """
     Returns a list of available locations from the epydemix-data repository.
