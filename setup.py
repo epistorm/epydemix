@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="epydemix",
-    version="1.0.2",
+    version="1.1.0",
     author="The Epydemix Developers",
     author_email="epydemix@isi.it",
     description="A Python package for epidemic modeling, simulation, and calibration",
