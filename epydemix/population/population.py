@@ -6,6 +6,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+EPYDEMIX_DATA_BASE_URL = "https://raw.githubusercontent.com/epistorm/epydemix-data"
+
 demographic_grouping_prem = OrderedDict(
     {
         "0-4": np.arange(0, 5).astype(str),
@@ -421,19 +423,112 @@ def aggregate_demographic(
     return df_Nk_new
 
 
-def validate_population_name(population_name: str, path_to_data: str) -> None:
+def _get_locations_path(path_to_data: str, attribute: str, is_remote: bool) -> str:
+    """Returns the path to locations.csv for the given attribute."""
+    if attribute == "age":
+        if is_remote:
+            return f"{path_to_data}locations.csv"
+        else:
+            return os.path.join(path_to_data, "locations.csv")
+    else:
+        if is_remote:
+            return f"{path_to_data}data/other_attributes/{attribute}/locations.csv"
+        else:
+            return os.path.join(
+                path_to_data, "data", "other_attributes", attribute, "locations.csv"
+            )
+
+
+def _get_demographic_path(
+    path_to_data: str, attribute: str, population_name: str, is_remote: bool
+):
+    """Returns the path to the demographic file for the given attribute and population."""
+    if attribute == "age":
+        rel = f"data/{population_name}/demographic/age_distribution.csv"
+        if is_remote:
+            return path_to_data + rel
+        else:
+            return (
+                Path(path_to_data)
+                / "data"
+                / population_name
+                / "demographic"
+                / "age_distribution.csv"
+            )
+    else:
+        rel = f"data/other_attributes/{attribute}/{population_name}/demographic/population.csv"
+        if is_remote:
+            return path_to_data + rel
+        else:
+            return (
+                Path(path_to_data)
+                / "data"
+                / "other_attributes"
+                / attribute
+                / population_name
+                / "demographic"
+                / "population.csv"
+            )
+
+
+def _get_contact_matrix_path(
+    path_to_data: str,
+    attribute: str,
+    population_name: str,
+    contacts_source: str,
+    layer_name: str,
+    is_remote: bool,
+):
+    """Returns the path to a contact matrix CSV for the given attribute, population, source, and layer."""
+    filename = f"contacts_matrix_{layer_name}.csv"
+    if attribute == "age":
+        rel = f"data/{population_name}/contact_matrices/{contacts_source}/{filename}"
+        if is_remote:
+            return path_to_data + rel
+        else:
+            return (
+                Path(path_to_data)
+                / "data"
+                / population_name
+                / "contact_matrices"
+                / contacts_source
+                / filename
+            )
+    else:
+        rel = f"data/other_attributes/{attribute}/{population_name}/contact_matrices/{contacts_source}/{filename}"
+        if is_remote:
+            return path_to_data + rel
+        else:
+            return (
+                Path(path_to_data)
+                / "data"
+                / "other_attributes"
+                / attribute
+                / population_name
+                / "contact_matrices"
+                / contacts_source
+                / filename
+            )
+
+
+def validate_population_name(
+    population_name: str, path_to_data: str, attribute: str = "age"
+) -> None:
     """
     Validates if a given population name exists in the locations data.
 
     Args:
         population_name (str): The name of the population to validate.
-        path_to_data (str): The path to the directory containing the 'locations.csv' file.
+        path_to_data (str): The path to the directory containing the data.
+        attribute (str): The demographic attribute layer. Defaults to "age".
 
     Raises:
         ValueError: If the population_name is not found in the list of locations.
     """
-    # Construct the full path to the locations CSV file
-    locations_file = os.path.join(path_to_data, "locations.csv")
+    is_remote = path_to_data.startswith("http://") or path_to_data.startswith(
+        "https://"
+    )
+    locations_file = _get_locations_path(path_to_data, attribute, is_remote)
 
     # Load the locations data and extract the list of locations
     locations_list = pd.read_csv(locations_file)["location"].values
@@ -441,19 +536,20 @@ def validate_population_name(population_name: str, path_to_data: str) -> None:
     # Check if the population name is in the list of locations
     if population_name not in locations_list:
         raise ValueError(
-            f"Location {population_name} not found in the list of supported locations. See {path_to_data}/locations.csv"
+            f"Location {population_name} not found in the list of supported locations. See {locations_file}"
         )
 
 
 def get_primary_contacts_source(
-    population_name: str, path_to_data: str
+    population_name: str, path_to_data: str, attribute: str = "age"
 ) -> Optional[str]:
     """
     Retrieves the primary contact source for a given population name from the locations data.
 
     Args:
         population_name (str): The name of the population whose primary contact source is to be retrieved.
-        path_to_data (str): The path to the directory containing the 'locations.csv' file.
+        path_to_data (str): The path to the directory containing the data.
+        attribute (str): The demographic attribute layer. Defaults to "age".
 
     Returns:
         Optional[str]: The primary contact source for the given population name.
@@ -462,8 +558,10 @@ def get_primary_contacts_source(
     Raises:
         ValueError: If the population name is not found in the locations data.
     """
-    # Construct the full path to the locations CSV file
-    locations_file = os.path.join(path_to_data, "locations.csv")
+    is_remote = path_to_data.startswith("http://") or path_to_data.startswith(
+        "https://"
+    )
+    locations_file = _get_locations_path(path_to_data, attribute, is_remote)
 
     # Load the contact matrices sources data
     contact_matrices_sources = pd.read_csv(locations_file)
@@ -527,8 +625,13 @@ def load_epydemix_population(
     path_to_data: Optional[str] = None,
     layers: List[str] = ["school", "work", "home", "community"],
     age_group_mapping: Optional[Dict[str, List[str]]] = None,
-    supported_contacts_sources: List[str] = ["prem_2017", "prem_2021", "mistry_2021"],
-    path_to_data_github: str = "https://raw.githubusercontent.com/epistorm/epydemix-data/main/",
+    supported_contacts_sources: Dict[str, List[str]] = {
+        "age": ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"],
+        "sex": ["litvinova_2025"],
+        "race_ethnicity": ["litvinova_2025"],
+    },
+    data_version: str = "v1.1.0",
+    attribute: str = "age",
 ) -> "Population":
     """
     Loads population and contact matrix data for a specified population.
@@ -539,8 +642,9 @@ def load_epydemix_population(
         path_to_data (Optional[str]): The local path to the data directory. If None, data is fetched from GitHub.
         layers (List[str]): The layers of contact matrices to load.
         age_group_mapping (Optional[Dict[str, List[str]]]): Mapping of age groups. If None, defaults based on contacts_source.
-        supported_contacts_sources (List[str]): List of supported contact sources.
-        path_to_data_github (str): The GitHub URL for fetching data if local path is not provided.
+        supported_contacts_sources (Dict[str, List[str]]): Dict mapping attribute names to their supported contact sources.
+        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
+        attribute (str): The demographic attribute layer. Defaults to "age".
 
     Returns:
         Population: An instance of the Population class with the loaded data.
@@ -554,117 +658,102 @@ def load_epydemix_population(
     # If path_to_data is None, use the GitHub URL
     is_remote = False
     if path_to_data is None:
-        path_to_data = path_to_data_github
+        path_to_data = f"{EPYDEMIX_DATA_BASE_URL}/{data_version}/"
         is_remote = True  # Mark as remote URL
 
     # Validate population name
-    validate_population_name(population_name, path_to_data)
+    validate_population_name(population_name, path_to_data, attribute=attribute)
 
     # Check if contacts_source is supported
     if contacts_source is None:
-        contacts_source = get_primary_contacts_source(population_name, path_to_data)
-    validate_contacts_source(contacts_source, supported_contacts_sources)
+        contacts_source = get_primary_contacts_source(
+            population_name, path_to_data, attribute=attribute
+        )
+    attribute_sources = supported_contacts_sources.get(attribute, [])
+    if attribute_sources:
+        validate_contacts_source(contacts_source, attribute_sources)
 
     # Load demographic data
-    demographic_file = f"data/{population_name}/demographic/age_distribution.csv"
-
-    if is_remote:
-        df = pd.read_csv(path_to_data + demographic_file)  # Fetch from URL
-    else:
-        demographic_path = (
-            Path(path_to_data)
-            / "data"
-            / population_name
-            / "demographic"
-            / "age_distribution.csv"
-        )
-        df = pd.read_csv(demographic_path)
+    demographic_path = _get_demographic_path(
+        path_to_data, attribute, population_name, is_remote
+    )
+    df = pd.read_csv(demographic_path)
 
     Nk = df  # Assign the loaded DataFrame
 
-    # Handle contact matrices aggregation
-    if contacts_source in ["prem_2017", "prem_2021"]:
-        Nk = aggregate_demographic(Nk, demographic_grouping_prem)
+    if attribute == "age":
+        # Handle contact matrices aggregation (age-specific)
+        if contacts_source in ["prem_2017", "prem_2021", "litvinova_2025"]:
+            Nk = aggregate_demographic(Nk, demographic_grouping_prem)
 
-    # Determine age group mapping
-    if age_group_mapping is None:
-        age_group_mapping = (
-            contacts_age_group_mapping_prem
-            if contacts_source in ["prem_2017", "prem_2021"]
-            else contacts_age_group_mapping_mistry
+        # Determine age group mapping
+        if age_group_mapping is None:
+            age_group_mapping = (
+                contacts_age_group_mapping_prem
+                if contacts_source in ["prem_2017", "prem_2021", "litvinova_2025"]
+                else contacts_age_group_mapping_mistry
+            )
+
+        validate_age_group_mapping(age_group_mapping, Nk.group_name.values)
+
+        # Aggregate population data
+        Nk_new = aggregate_demographic(Nk, age_group_mapping)
+        population.add_population(
+            Nk=Nk_new["value"].values, Nk_names=Nk_new["group_name"].values
         )
-
-    validate_age_group_mapping(age_group_mapping, Nk.group_name.values)
-
-    # Aggregate population data
-    Nk_new = aggregate_demographic(Nk, age_group_mapping)
-    population.add_population(
-        Nk=Nk_new["value"].values, Nk_names=Nk_new["group_name"].values
-    )
+    else:
+        # No aggregation for non-age attributes
+        population.add_population(
+            Nk=Nk["value"].values, Nk_names=Nk["group_name"].values
+        )
 
     # Load contact matrices
     for layer_name in layers:
-        contact_matrix_file = f"data/{population_name}/contact_matrices/{contacts_source}/contacts_matrix_{layer_name}.csv"
-
-        if is_remote:
-            C = pd.read_csv(
-                path_to_data + contact_matrix_file, header=None
-            ).values  # Load from URL
-        else:
-            contact_matrix_path = (
-                Path(path_to_data)
-                / "data"
-                / population_name
-                / "contact_matrices"
-                / contacts_source
-                / f"contacts_matrix_{layer_name}.csv"
-            )
-            C = pd.read_csv(
-                contact_matrix_path, header=None
-            ).values  # Load from local file
-
-        # Aggregate contact matrices
-        C_aggr = aggregate_matrix(
-            C,
-            old_population=Nk["value"].values,
-            new_population=Nk_new["value"].values,
-            age_group_mapping=age_group_mapping,
-            old_age_groups_idx={
-                name: idx for idx, name in enumerate(Nk.group_name.values)
-            },
-            new_age_group_idx={
-                name: idx for idx, name in enumerate(age_group_mapping.keys())
-            },
+        contact_matrix_path = _get_contact_matrix_path(
+            path_to_data,
+            attribute,
+            population_name,
+            contacts_source,
+            layer_name,
+            is_remote,
         )
+        C = pd.read_csv(contact_matrix_path, header=None).values
 
-        population.add_contact_matrix(C_aggr, layer_name=layer_name)
+        if attribute == "age":
+            # Aggregate contact matrices (age-specific)
+            C_aggr = aggregate_matrix(
+                C,
+                old_population=Nk["value"].values,
+                new_population=Nk_new["value"].values,
+                age_group_mapping=age_group_mapping,
+                old_age_groups_idx={
+                    name: idx for idx, name in enumerate(Nk.group_name.values)
+                },
+                new_age_group_idx={
+                    name: idx for idx, name in enumerate(age_group_mapping.keys())
+                },
+            )
+            population.add_contact_matrix(C_aggr, layer_name=layer_name)
+        else:
+            population.add_contact_matrix(C, layer_name=layer_name)
 
     return population
 
 
 def get_available_locations(
-    path_to_data: Optional[str] = None,
-    path_to_data_github: str = "https://raw.githubusercontent.com/epistorm/epydemix-data/main/",
+    attribute: str = "age",
+    data_version: str = "v1.1.0",
 ) -> pd.DataFrame:
     """
-    Returns a list of available locations.
+    Returns a list of available locations from the epydemix-data repository.
 
     Args:
-        path_to_data (Optional[str]): The local path to the data directory. If None, data is fetched from GitHub.
-        path_to_data_github (str): The GitHub URL for fetching data if local path is not provided.
+        attribute (str): The demographic attribute layer. Defaults to "age".
+        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
 
     Returns:
         pd.DataFrame: A DataFrame containing the list of available locations.
     """
-
-    # If path_to_data is None, use the GitHub URL
-    is_remote = False
-    if path_to_data is None:
-        path_to_data = path_to_data_github
-        is_remote = True  # Mark as remote URL
-
-    if is_remote:
-        locations_file = path_to_data + "locations.csv"
-    else:
-        locations_file = Path(path_to_data) / "locations.csv"
-    return pd.read_csv(locations_file)
+    base = f"{EPYDEMIX_DATA_BASE_URL}/{data_version}/"
+    locations_url = _get_locations_path(base, attribute, is_remote=True)
+    return pd.read_csv(locations_url)

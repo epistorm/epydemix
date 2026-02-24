@@ -82,6 +82,7 @@ We provide a series of tutorials to help you get started with **epydemix**.
 - [Tutorial 8](https://github.com/epistorm/epydemix/blob/main/tutorials/08_Multiple_Strains.ipynb): Modeling Multiple Strains
 - [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/09_Vaccinations.ipynb): Modeling Vaccinations
 - [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations and Calibration with Multiprocessing
+- [Tutorial 11](https://github.com/epistorm/epydemix/blob/main/tutorials/11_Epistorm_Mix_Matrices.ipynb): Using Epistorm-Mix Contact Matrices (sex and race/ethnicity)
 
 You can run all tutorials directly in Google Colab — just open any notebook in the [tutorials](./tutorials) folder and click the **“Open in Colab”** button at the top.
 
@@ -137,7 +138,7 @@ This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) f
 ---
 ## Contributors
 
-Contributions are welcome! Please open issues or pull requests on GitHub.
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) and open issues or pull requests on GitHub. For questions and general discussion, visit our [GitHub Discussions](https://github.com/epistorm/epydemix/discussions).
 
 <a href="https://github.com/epistorm/epydemix/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=epistorm/epydemix" />

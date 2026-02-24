@@ -45,8 +45,11 @@ class EpiModel:
         contact_layers: Optional[List] = None,
         contacts_source: Optional[str] = None,
         age_group_mapping: Optional[Dict] = None,
-        supported_contacts_sources: Optional[List] = None,
+        supported_contacts_sources: Optional[Dict] = None,
         use_default_population: bool = True,
+        default_population_size: int = 100000,
+        data_version: str = "v1.1.0",
+        attribute: str = "age",
     ) -> None:
         """
         Initializes the EpiModel instance.
@@ -62,8 +65,12 @@ class EpiModel:
             contacts_source (str or None, optional): The source of contact data. If None, the function will automatically detect the source.
             age_group_mapping (dict or None, optional): A mapping of age groups for the population.
             supported_contacts_sources (list or None, optional): A list of supported contact data sources. Defaults to
-                ["prem_2017", "prem_2021", "mistry_2021"] if None.
+                ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"] for age,
+                ["litvinova_2025"] for sex and race_ethnicity if None.
             use_default_population (bool, optional): If True, creates a default population; if False, tries to load the population from the provided path and population name. Defaults to True.
+            default_population_size (int, optional): The size of the default population when use_default_population is True. Defaults to 100000.
+            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
+            attribute (str, optional): The demographic attribute layer. Defaults to "age".
         Returns:
             None
         """
@@ -95,7 +102,11 @@ class EpiModel:
 
         # Handle default contact sources if not provided
         if supported_contacts_sources is None:
-            supported_contacts_sources = ["prem_2017", "prem_2021", "mistry_2021"]
+            supported_contacts_sources = {
+                "age": ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"],
+                "sex": ["litvinova_2025"],
+                "race_ethnicity": ["litvinova_2025"],
+            }
 
         # Load or create population based on use_default_population flag
         self.population = self._load_or_create_population(
@@ -106,6 +117,9 @@ class EpiModel:
             age_group_mapping,
             supported_contacts_sources,
             use_default_population,
+            default_population_size,
+            data_version,
+            attribute,
         )
 
         # Initalize functions to compute transition rates
@@ -171,8 +185,11 @@ class EpiModel:
         contact_layers: List,
         contacts_source: Optional[str],
         age_group_mapping: Optional[Dict],
-        supported_contacts_sources: List,
+        supported_contacts_sources: Dict,
         use_default_population: bool,
+        default_population_size: int = 100000,
+        data_version: str = "v1.1.0",
+        attribute: str = "age",
     ) -> Population:
         """
         Loads a population from a file or creates a default population if specified.
@@ -184,8 +201,11 @@ class EpiModel:
             contacts_source (str or None): The source of contact data. If None, load_population will auto-determine the source.
             age_group_mapping (dict or None): A mapping for age groups. If None, a default mapping is used.
             supported_contacts_sources (list): A list of supported contact data sources (e.g., "prem_2017", "prem_2021").
-            use_default_population (bool): If True, creates a default population with a single contact matrix and population size of 100000.
+            use_default_population (bool): If True, creates a default population with a single contact matrix and population size of default_population_size.
                 If False, attempts to load population data from a local or online source.
+            default_population_size (int): The size of the default population when use_default_population is True. Defaults to 100000.
+            data_version (str): The git tag/version of the epydemix-data repository. Defaults to "vtest".
+            attribute (str): The demographic attribute layer. Defaults to "age".
 
         Returns:
             Population: A population object, either created manually or loaded from data.
@@ -194,7 +214,9 @@ class EpiModel:
             # Create a default population manually
             population = Population(name=population_name)
             population.add_contact_matrix(np.array([[1.0]]))  # Default contact matrix
-            population.add_population(np.array([100000]))  # Default population size
+            population.add_population(
+                np.array([default_population_size])
+            )  # Default population size
             return population
         else:
             # Load population using load_population, which handles both online and local sources
@@ -205,6 +227,8 @@ class EpiModel:
                 layers=contact_layers,
                 age_group_mapping=age_group_mapping,
                 supported_contacts_sources=supported_contacts_sources,
+                data_version=data_version,
+                attribute=attribute,
             )
 
     def import_epydemix_population(
@@ -214,7 +238,9 @@ class EpiModel:
         contact_layers: Optional[List] = None,
         contacts_source: Optional[str] = None,
         age_group_mapping: Optional[Dict] = None,
-        supported_contacts_sources: Optional[List] = None,
+        supported_contacts_sources: Optional[Dict] = None,
+        data_version: str = "v1.1.0",
+        attribute: str = "age",
     ) -> None:
         """
         Sets or updates the population for the model.
@@ -227,7 +253,10 @@ class EpiModel:
             contacts_source (str or None, optional): The source of contact data. If None, the function will attempt to determine the source automatically.
             age_group_mapping (dict or None, optional): A mapping for age groups. If None, a default mapping is used.
             supported_contacts_sources (list or None, optional): A list of supported contact data sources (e.g., "prem_2017", "prem_2021").
-                Defaults to ["prem_2017", "prem_2021", "mistry_2021"] if None.
+                Defaults to ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"] for age,
+                ["litvinova_2025"] for sex and race_ethnicity if None.
+            data_version (str, optional): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
+            attribute (str, optional): The demographic attribute layer. Defaults to "age".
 
         Returns:
             None
@@ -238,7 +267,11 @@ class EpiModel:
 
         # Handle default contact sources if not provided
         if supported_contacts_sources is None:
-            supported_contacts_sources = ["prem_2017", "prem_2021", "mistry_2021"]
+            supported_contacts_sources = {
+                "age": ["prem_2017", "prem_2021", "mistry_2021", "litvinova_2025"],
+                "sex": ["litvinova_2025"],
+                "race_ethnicity": ["litvinova_2025"],
+            }
 
         # Load a new population using the same logic as in the constructor
         self.population = load_epydemix_population(
@@ -248,6 +281,8 @@ class EpiModel:
             layers=contact_layers,
             age_group_mapping=age_group_mapping,
             supported_contacts_sources=supported_contacts_sources,
+            data_version=data_version,
+            attribute=attribute,
         )
 
     def add_compartments(self, compartments: Union[List, object]) -> None:
