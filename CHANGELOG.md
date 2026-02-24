@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 * Added `default_population_size` parameter (default `100000`) to `EpiModel` to allow configuring the size of the default population when `use_default_population=True`.
+* Added per-simulation time/budget checks to ABC-SMC (`run_smc`): `_initialize_particles` and `_run_smc_generation` now accept `start_time`, `max_time`, `total_simulations_budget`, and `n_simulations` parameters, returning `None` when interrupted mid-generation. `run_smc` handles `None` by discarding the incomplete generation and keeping the last fully completed one, preventing indefinite overshooting when the acceptance rate drops near zero.
+* Added `verbose` parameter to `_check_stopping_conditions` to suppress duplicate log messages from inner loops.
+* Added tests for ABC-SMC with time limit, budget limit, generation-0 interruption, verbose output, `minimum_epsilon` stopping, and no-limits backward compatibility.
 * Added `ignore_nan` parameter to quantile computation methods in `CalibrationResults` (`_compute_quantiles()`, `get_calibration_quantiles()`, `get_projection_quantiles()`) and `SimulationResults` (`get_quantiles()`, `get_quantiles_transitions()`, `get_quantiles_compartments()`) to handle NaN values from epidemic start date priors. Uses `np.nanquantile` when enabled, with warnings for variables exceeding 50% NaN values.
 * Comprehensive test coverage for the new `ignore_nan` functionality.
 * Added `variables` parameter to trajectory and quantile methods in `CalibrationResults` (`get_calibration_trajectories()`, `get_projection_trajectories()`, `get_calibration_quantiles()`, `get_projection_quantiles()`) and `SimulationResults` (`get_quantiles()`, `get_quantiles_transitions()`, `get_quantiles_compartments()`) to filter variables before array stacking, reducing memory usage.
@@ -42,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 * Added two new demographic attributes in **epydemix-data**: `"sex"` and `"race_ethnicity"`, with population and contact matrix data for the United States.
 * Added `"litvinova_2025"` contact matrices for all three attributes (`age`, `sex`, `race_ethnicity`).
+
+### Fixed
+
+* Fixed `TypeError: ufunc 'isnan' not supported` when `_compute_quantiles` encounters non-numeric arrays (e.g., dates) with `ignore_nan=True`. The method now skips non-numeric arrays in NaN checks and quantile computation loops.
 
 ---
 

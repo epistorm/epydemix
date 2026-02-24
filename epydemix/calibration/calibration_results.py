@@ -210,6 +210,8 @@ class CalibrationResults:
             import warnings
 
             for key, vals in trajectories.items():
+                if not np.issubdtype(vals.dtype, np.number):
+                    continue
                 nan_prop = np.isnan(vals).mean(axis=0)
                 max_nan_prop = np.max(nan_prop)
                 if max_nan_prop > 0.5:
@@ -219,6 +221,8 @@ class CalibrationResults:
                     )
 
         for key, vals in trajectories.items():
+            if not np.issubdtype(vals.dtype, np.number):
+                continue
             data[key] = [
                 val for q in quantiles for val in quantile_func(vals, q, axis=0)
             ]
