@@ -27,9 +27,9 @@ The source code for Epydemix is available on GitHub: `Epydemix Repository <https
    :target: https://pypi.org/project/epydemix/
    :alt: PyPI version
 
-.. image:: https://img.shields.io/badge/preprint-medRxiv-orange
-   :target: https://www.medrxiv.org/content/10.1101/2025.05.07.25327151v1
-   :alt: medRxiv preprint
+.. image:: https://img.shields.io/badge/Published%20in-PLOS%20Computational%20Biology-blue?logo=plos
+   :target: https://doi.org/10.1371/journal.pcbi.1013735
+   :alt: PLOS Computational Biology
 
 
 .. image:: https://raw.githubusercontent.com/epistorm/epydemix/main/tutorials/img/epydemix-logo.png
@@ -71,6 +71,7 @@ We provide a series of tutorials to help you get started with Epydemix:
 - `Tutorial 8: Modeling Multiple Strains <https://github.com/epistorm/epydemix/blob/main/tutorials/08_Multiple_Strains.ipynb>`_
 - `Tutorial 9: Modeling Vaccinations <https://github.com/epistorm/epydemix/blob/main/tutorials/09_Vaccinations.ipynb>`_
 - `Tutorial 10: Speeding up Simulations and Calibration with Multiprocessing <https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb>`_
+- `Tutorial 11: Using Epistorm-Mix Contact Matrices (sex and race/ethnicity) <https://github.com/epistorm/epydemix/blob/main/tutorials/11_Epistorm_Mix_Matrices.ipynb>`_
 
 .. toctree::
    :maxdepth: 3
