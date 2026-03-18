@@ -1066,9 +1066,12 @@ def compute_spontaneous_transition_rate(params, data):
         The rate of the transition
     """
     if isinstance(params, str):
-        env_copy = copy.deepcopy(data["parameters"])
-        rate_eval = evaluate(expr=params, env=env_copy)[data["t"]]
-        return rate_eval
+        t = data["t"]
+        parameters = data["parameters"]
+        if params in parameters:
+            return parameters[params][t]
+        env_copy = copy.deepcopy(parameters)
+        return evaluate(expr=params, env=env_copy)[t]
     else:
         return params
 
@@ -1088,8 +1091,12 @@ def compute_mediated_transition_rate(params, data):
             - pop_sizes: The population sizes
     """
     if isinstance(params[0], str):
-        env_copy = copy.deepcopy(data["parameters"])
-        rate_eval = evaluate(expr=params[0], env=env_copy)[data["t"]]
+        t = data["t"]
+        parameters = data["parameters"]
+        if params[0] in parameters:
+            rate_eval = parameters[params[0]][t]
+        else:
+            rate_eval = evaluate(expr=params[0], env=copy.deepcopy(parameters))[t]
     else:
         rate_eval = params[0]
     agent_idx = data["comp_indices"][params[1]]

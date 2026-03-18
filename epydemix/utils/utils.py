@@ -8,6 +8,17 @@ import numpy as np
 import pandas as pd
 from evalidate import Expr, base_eval_model
 
+try:
+    from numba import njit
+    _NUMBA_AVAILABLE = True
+except ImportError:
+    _NUMBA_AVAILABLE = False
+    # Transparent fallback: @njit becomes a no-op decorator
+    def njit(*args, **kwargs):
+        def decorator(fn):
+            return fn
+        return decorator if args and callable(args[0]) else decorator
+
 
 def is_scalar(value):
     return np.isscalar(value) and not isinstance(value, (str, bytes))
@@ -398,6 +409,47 @@ def combine_simulation_outputs(
     return combined_simulation_outputs
 
 
+@njit(cache=True)
+def _multinomial_probs(n, rates, stay_idx, mask, dt, apply_linear_approximation):
+    """
+    Compiled probability computation for a multinomial draw with a 'stay' compartment.
+    Returns a float64 probs array ready to pass to rng.multinomial.
+
+    The RNG draw is kept in Python (see `multinomial`) to preserve numpy Generator
+    seeding and reproducibility — Numba's internal RNG is a separate legacy state.
+    """
+    k = len(rates)
+    probs = np.zeros(k)
+
+    if n <= 0:
+        probs[stay_idx] = 1.0
+        return probs
+
+    H = 0.0
+    for i in range(k):
+        if mask[i]:
+            H += rates[i] * dt
+
+    if H <= 0.0:
+        probs[stay_idx] = 1.0
+        return probs
+
+    if apply_linear_approximation:
+        for i in range(k):
+            if mask[i]:
+                probs[i] = rates[i] * dt
+        probs[stay_idx] = 1.0 - H
+        return probs
+
+    p_leave = -np.expm1(-H)
+    scale = p_leave / H
+    for i in range(k):
+        if mask[i]:
+            probs[i] = rates[i] * dt * scale
+    probs[stay_idx] = 1.0 - p_leave
+    return probs
+
+
 def multinomial(
     n,
     rates,
@@ -409,8 +461,9 @@ def multinomial(
     probs_out=None,
 ):
     """
-    Multinomial sample with a 'stay' compartment (Performance-oriented).
-    Rates are converted to probabilities using the time step size.
+    Multinomial sample with a 'stay' compartment.
+    Probability computation is JIT-compiled via Numba; the draw uses the
+    numpy Generator passed in to preserve reproducibility.
 
     Args:
         n (int): number of trials
@@ -420,53 +473,30 @@ def multinomial(
         dt (float): time step size
         apply_linear_approximation (bool): whether to apply a linear approximation to the probabilities
         rng (np.random.Generator): random number generator
-        probs_out (np.ndarray): preallocated array for probabilities
+        probs_out (np.ndarray): unused, kept for API compatibility
 
     Returns:
         np.ndarray: array of multinomial samples
     """
-
     rng = np.random.default_rng() if rng is None else rng
-
-    # Early exits
+    probs = _multinomial_probs(n, rates, stay_idx, mask, dt, apply_linear_approximation)
     if n <= 0:
-        out = np.zeros_like(rates, dtype=int)
+        out = np.zeros(len(rates), dtype=int)
         out[stay_idx] = int(n)
         return out
-
-    # Convert rates to probabilities
-    p = rates * dt
-
-    # Prepare an output probs buffer
-    probs = (
-        probs_out
-        if probs_out is not None
-        else np.empty_like(
-            p, dtype=(p.dtype if np.issubdtype(p.dtype, np.floating) else float)
-        )
-    )
-    probs.fill(0.0)
-
-    # Linear approximation
-    if apply_linear_approximation:
-        # Sum over mask without allocating p[mask]
-        mass = np.add.reduce(p, where=mask, initial=0.0, dtype=float)
-        # Write only where mask is True (no masked temp)
-        np.copyto(probs, p, where=mask)
-        probs[stay_idx] = 1.0 - mass
-        return rng.multinomial(int(n), probs)
-
-    H = np.add.reduce(p, where=mask, initial=0.0, dtype=float)
-    if H <= 0.0:
-        out = np.zeros_like(p, dtype=int)
-        out[stay_idx] = int(n)
-        return out
-
-    p_leave = -np.expm1(-H)
-    np.multiply(p, p_leave / H, out=probs, where=mask)
-    probs[stay_idx] = 1.0 - p_leave
-
     return rng.multinomial(int(n), probs)
+
+
+# Trigger JIT compilation at import time so the first simulation call
+# doesn't pay the compilation cost.
+_multinomial_probs(
+    1.0,
+    np.array([0.1, 0.05, 0.0]),
+    0,
+    np.array([False, True, True]),
+    1.0,
+    False,
+)
 
 
 def get_initial_conditions_dict(Nk, perc_dict):
