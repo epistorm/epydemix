@@ -363,3 +363,206 @@ def _cmd_fit(
         result["observed"] = observed.to_dict(orient="list")
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Cross-bundle comparison
+# ---------------------------------------------------------------------------
+
+# Built-in metric registry — each metric is a function that takes
+# (comp_df, manifest, **kwargs) and returns a dict with "value" and
+# optionally "ci90" (a two-element list).
+
+def _metric_attack_rate(comp, manifest, precision=2, **kw):
+    """Fraction of population ever infected (recovered + dead)."""
+    # Find terminal compartments (R-like + D-like)
+    total_cols = [c for c in comp.columns if c.endswith("_total")
+                  and c not in ("sim_id", "date")]
+    # Heuristic: susceptible is the only compartment that decreases monotonically
+    # Attack rate = 1 - S_final / S_initial
+    s_col = None
+    for c in total_cols:
+        if c.startswith("S") or c.startswith("Susceptible"):
+            s_col = c
+            break
+    if s_col is None:
+        return {"value": None, "note": "no susceptible compartment found"}
+
+    first_day = comp.groupby("sim_id")[s_col].first()
+    last_day = comp.groupby("sim_id")[s_col].last()
+    attack = 1.0 - last_day / first_day
+    return {
+        "median": round(float(attack.median()) * 100, precision),
+        "ci90": [round(float(attack.quantile(0.05)) * 100, precision),
+                 round(float(attack.quantile(0.95)) * 100, precision)],
+        "units": "percent",
+    }
+
+
+def _metric_peak(comp, manifest, variable=None, precision=2, **kw):
+    """Peak value of a variable across simulations."""
+    var = variable or _default_var(comp, prefix="I")
+    if var not in comp.columns:
+        return {"value": None, "note": f"{var} not found"}
+    peaks = comp.groupby("sim_id")[var].max()
+    return {
+        "median": round(float(peaks.median()), precision),
+        "ci90": [round(float(peaks.quantile(0.05)), precision),
+                 round(float(peaks.quantile(0.95)), precision)],
+        "variable": var,
+    }
+
+
+def _metric_peak_date(comp, manifest, variable=None, precision=2, **kw):
+    """Date of peak value."""
+    var = variable or _default_var(comp, prefix="I")
+    if var not in comp.columns:
+        return {"value": None, "note": f"{var} not found"}
+    comp_sorted = comp.sort_values("date")
+    peak_dates = comp_sorted.groupby("sim_id").apply(
+        lambda g: g.loc[g[var].idxmax(), "date"], include_groups=False
+    )
+    peak_dates = pd.to_datetime(peak_dates).sort_values()
+    n = len(peak_dates)
+    return {
+        "median": str(peak_dates.iloc[int(0.5 * n)])[:10] if n > 0 else None,
+        "ci90": [
+            str(peak_dates.iloc[max(0, int(0.05 * n))])[:10],
+            str(peak_dates.iloc[min(n - 1, int(0.95 * n))])[:10],
+        ] if n > 0 else None,
+        "variable": var,
+    }
+
+
+def _metric_total_deaths(comp, manifest, precision=2, **kw):
+    """Total deaths at end of simulation."""
+    d_col = None
+    for c in comp.columns:
+        if c.endswith("_total") and (c.startswith("D") or c.startswith("Dead")):
+            d_col = c
+            break
+    if d_col is None:
+        return {"value": None, "note": "no death compartment found"}
+    final = comp.groupby("sim_id")[d_col].last()
+    return {
+        "median": round(float(final.median()), precision),
+        "ci90": [round(float(final.quantile(0.05)), precision),
+                 round(float(final.quantile(0.95)), precision)],
+        "variable": d_col,
+    }
+
+
+def _metric_days_over(comp, manifest, variable=None, threshold=None,
+                       precision=0, **kw):
+    """Number of days the median of a variable exceeds a threshold."""
+    if threshold is None:
+        return {"value": None, "note": "threshold required (e.g. days_over:500)"}
+    threshold = float(threshold)
+    var = variable or _default_var(comp, prefix="H")
+    if var not in comp.columns:
+        return {"value": None, "note": f"{var} not found"}
+    median_ts = comp.groupby("date")[var].median()
+    days = int((median_ts > threshold).sum())
+    return {
+        "value": days,
+        "threshold": threshold,
+        "variable": var,
+    }
+
+
+def _metric_final_value(comp, manifest, variable=None, precision=2, **kw):
+    """Final value of a variable across simulations."""
+    var = variable or _default_var(comp, prefix="I")
+    if var not in comp.columns:
+        return {"value": None, "note": f"{var} not found"}
+    final = comp.groupby("sim_id")[var].last()
+    return {
+        "median": round(float(final.median()), precision),
+        "ci90": [round(float(final.quantile(0.05)), precision),
+                 round(float(final.quantile(0.95)), precision)],
+        "variable": var,
+    }
+
+
+def _default_var(comp, prefix="I"):
+    """Find the first _total column matching a prefix."""
+    for c in comp.columns:
+        if c.endswith("_total") and c.split("_")[0].startswith(prefix):
+            return c
+    # Fall back to first _total column that isn't S
+    for c in comp.columns:
+        if c.endswith("_total") and not c.startswith("S"):
+            return c
+    return None
+
+
+COMPARE_METRICS = {
+    "attack_rate": _metric_attack_rate,
+    "peak": _metric_peak,
+    "peak_date": _metric_peak_date,
+    "total_deaths": _metric_total_deaths,
+    "days_over": _metric_days_over,
+    "final_value": _metric_final_value,
+}
+
+
+def compare_bundles(
+    bundles: Dict[str, str],
+    metrics: Optional[List[str]] = None,
+    variables: Optional[List[str]] = None,
+    precision: int = 2,
+) -> Dict[str, Any]:
+    """Compare multiple bundles on a set of metrics.
+
+    Args:
+        bundles: Mapping of scenario name → bundle path.
+        metrics: List of metric names to compute. Each can be a plain name
+            (e.g. ``"attack_rate"``) or include a parameter after a colon
+            (e.g. ``"days_over:500"``).  Defaults to all standard metrics
+            (excluding ``days_over`` which requires a threshold).
+        variables: Optional list of variable names to pass to variable-specific
+            metrics (peak, peak_date, final_value).  If not provided, metrics
+            will auto-detect the most relevant variable.
+        precision: Decimal places for rounding.
+
+    Returns:
+        A dict with structure ``{scenario_name: {metric_name: result}}``.
+    """
+    if metrics is None:
+        metrics = ["attack_rate", "peak", "peak_date", "total_deaths"]
+
+    # Parse metric specs (name or name:param)
+    parsed_metrics = []
+    for m in metrics:
+        if ":" in m:
+            name, param = m.split(":", 1)
+            parsed_metrics.append((name, param))
+        else:
+            parsed_metrics.append((m, None))
+
+    # Validate metric names
+    for name, _ in parsed_metrics:
+        if name not in COMPARE_METRICS:
+            raise ValueError(
+                f"Unknown metric '{name}'. "
+                f"Available: {list(COMPARE_METRICS.keys())}"
+            )
+
+    result = {}
+    for scenario_name, bundle_path in bundles.items():
+        manifest = load_bundle(bundle_path)
+        comp = load_bundle_dataframe(bundle_path, "compartments")
+
+        scenario_result = {}
+        for metric_name, metric_param in parsed_metrics:
+            fn = COMPARE_METRICS[metric_name]
+            kwargs = {"precision": precision}
+            if variables:
+                kwargs["variable"] = variables[0]
+            if metric_param is not None:
+                kwargs["threshold"] = metric_param
+            scenario_result[metric_name] = fn(comp, manifest, **kwargs)
+
+        result[scenario_name] = scenario_result
+
+    return result

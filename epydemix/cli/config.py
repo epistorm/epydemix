@@ -1,5 +1,6 @@
 """Load and validate YAML/JSON configs, build EpiModel instances from them."""
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -11,19 +12,8 @@ from ..model.epimodel import EpiModel
 from ..model.predefined_models import SUPPORTED_MODELS, load_predefined_model
 
 
-def load_config(path: str) -> Dict[str, Any]:
-    """Load a config from a YAML or JSON file.
-
-    Args:
-        path: Path to the config file.
-
-    Returns:
-        Parsed config dictionary.
-
-    Raises:
-        FileNotFoundError: If the file doesn't exist.
-        ImportError: If YAML is needed but pyyaml is not installed.
-    """
+def _load_raw(path: str) -> Dict[str, Any]:
+    """Load a single config file without resolving inheritance."""
     filepath = Path(path)
     if not filepath.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
@@ -38,17 +28,85 @@ def load_config(path: str) -> Dict[str, Any]:
                     "Loading YAML configs requires pyyaml. "
                     "Install it with: pip install epydemix[cli]"
                 )
-            return yaml.safe_load(f)
+            return yaml.safe_load(f) or {}
         elif suffix == ".json":
             return json.load(f)
         else:
-            # Try YAML first, fall back to JSON
             content = f.read()
             try:
                 import yaml
-                return yaml.safe_load(content)
+                return yaml.safe_load(content) or {}
             except (ImportError, Exception):
                 return json.loads(content)
+
+
+def _deep_merge(base: Dict, overlay: Dict) -> Dict:
+    """Deep-merge *overlay* onto *base*, returning a new dict.
+
+    - Dicts are merged recursively.
+    - All other types (lists, scalars) in *overlay* replace the base value.
+
+    This means lists like ``overrides`` and ``interventions`` are replaced
+    wholesale, giving the overlay full control.
+    """
+    result = copy.deepcopy(base)
+    for key, value in overlay.items():
+        if (
+            key in result
+            and isinstance(result[key], dict)
+            and isinstance(value, dict)
+        ):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+_MAX_INHERITANCE_DEPTH = 10
+
+
+def load_config(path: str) -> Dict[str, Any]:
+    """Load a config from a YAML or JSON file, resolving inheritance.
+
+    If the config contains a ``base`` key, the referenced config is loaded
+    first and the current config is deep-merged on top of it.  Inheritance
+    chains are followed up to 10 levels deep.  The ``base`` key is resolved
+    relative to the directory of the file that contains it.
+
+    Args:
+        path: Path to the config file.
+
+    Returns:
+        Fully resolved config dictionary (``base`` key removed).
+
+    Raises:
+        FileNotFoundError: If any file in the chain doesn't exist.
+        ValueError: If the inheritance chain exceeds the depth limit.
+    """
+    return _resolve_config(path, depth=0, seen=set())
+
+
+def _resolve_config(path: str, depth: int, seen: set) -> Dict[str, Any]:
+    """Recursive config loader with cycle and depth detection."""
+    real = str(Path(path).resolve())
+    if real in seen:
+        raise ValueError(f"Circular config inheritance detected: {real}")
+    if depth > _MAX_INHERITANCE_DEPTH:
+        raise ValueError(
+            f"Config inheritance too deep (>{_MAX_INHERITANCE_DEPTH} levels)"
+        )
+
+    seen = seen | {real}
+    config = _load_raw(path)
+
+    base_ref = config.pop("base", None)
+    if base_ref is not None:
+        # Resolve relative to the directory of the current config file
+        base_path = str((Path(path).parent / base_ref).resolve())
+        base_config = _resolve_config(base_path, depth + 1, seen)
+        config = _deep_merge(base_config, config)
+
+    return config
 
 
 def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:

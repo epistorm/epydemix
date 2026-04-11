@@ -155,7 +155,25 @@ overrides:
 
 **Required sections:** `model`, `simulation` (with `start_date` and `end_date`).
 
-**Optional sections:** `parameters` (defaults used if omitted), `population`, `initial_conditions`, `interventions`, `overrides`.
+**Optional sections:** `parameters` (defaults used if omitted), `population`, `initial_conditions`, `interventions`, `overrides`, `base`.
+
+### Config inheritance
+
+A config can inherit from another using the `base` field. The overlay is deep-merged on top of the base: dicts merge recursively, everything else (lists, scalars) replaces. This means a scenario overlay only needs to specify what changes.
+
+```yaml
+# seirhd_early.yaml — inherits model, parameters, ICs from baseline
+base: seirhd_baseline.yaml
+overrides:
+  - parameter: beta
+    start_date: "2024-10-01"
+    end_date: "2025-02-01"
+    value: 0.27
+```
+
+Chains are supported (child → parent → grandparent, up to 10 levels). The `base` path is resolved relative to the file that contains it. Circular references are detected and rejected.
+
+This is the recommended way to set up scenario sweeps: write one complete base config, then one small overlay per scenario. Validate and run each overlay normally — the inheritance is resolved at load time and is transparent to the rest of the pipeline.
 
 ## Output Reference
 
@@ -390,6 +408,58 @@ initial_conditions:
   H: 0.0
   R: 0.0
   D: 0.0
+```
+
+## Comparing Scenarios
+
+The `compare` command computes standard metrics across multiple bundles in a single call, replacing the need to write custom Parquet-reading code for common comparisons.
+
+```bash
+epydemix compare baseline.epx early.epx late.epx
+# → JSON with attack_rate, peak, peak_date, total_deaths for each scenario
+
+epydemix compare baseline.epx early.epx late.epx \
+  -n Baseline,Early,Late \
+  -m attack_rate,peak,total_deaths,days_over:500 \
+  -b Baseline
+# → metrics + deltas vs Baseline
+```
+
+### Built-in metrics
+
+| Metric | Description |
+|---|---|
+| `attack_rate` | % of population ever infected (based on susceptible depletion) |
+| `peak` | Peak value of a variable (default: first I-like _total column) |
+| `peak_date` | Date of peak value |
+| `total_deaths` | Final value of the death compartment |
+| `days_over:N` | Days the median of a variable exceeds threshold N |
+| `final_value` | Final value of a variable |
+
+### Flags
+
+| Flag | Description |
+|---|---|
+| `-n, --names` | Comma-separated scenario names (same order as bundle arguments) |
+| `-m, --metrics` | Comma-separated metrics to compute |
+| `-v, --variables` | Variable name for variable-specific metrics |
+| `-b, --baseline` | Scenario name for delta computation |
+| `--round` | Decimal precision |
+
+When `--baseline` is provided, the output includes a `_deltas_vs_<name>` key with the difference (scenario minus baseline) for each numeric metric.
+
+### Typical sweep workflow
+
+```bash
+# 1. Write one base config with the full model
+# 2. Write N small overlays (one per scenario)
+# 3. Validate and run all of them
+for f in scenario_*.yaml; do
+  epydemix validate "$f"
+  epydemix run "$f" -o "${f%.yaml}.epx"
+done
+# 4. Compare in one shot
+epydemix compare scenario_*.epx -n Baseline,Early,Late -b Baseline
 ```
 
 ## Visualization Recipes

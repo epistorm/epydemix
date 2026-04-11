@@ -12,6 +12,7 @@ Usage::
 
 import json
 import sys
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -281,6 +282,105 @@ def defaults(disease):
             _print_json(d.to_dict())
         except FileNotFoundError as e:
             _error_json("UNKNOWN_DEFAULTS", str(e))
+
+
+# ---------------------------------------------------------------------------
+# compare
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.argument("bundles", nargs=-1, required=True,
+                type=click.Path(exists=True))
+@click.option("--metrics", "-m", default=None,
+              help="Comma-separated metrics (e.g. attack_rate,peak,total_deaths,days_over:500).")
+@click.option("--variables", "-v", default=None,
+              help="Comma-separated variable names for variable-specific metrics.")
+@click.option("--names", "-n", default=None,
+              help="Comma-separated scenario names (same order as bundles). "
+                   "Defaults to bundle directory names.")
+@click.option("--round", "precision", type=int, default=2,
+              help="Decimal precision for numeric output.")
+@click.option("--baseline", "-b", default=None,
+              help="Scenario name to use as baseline for delta computation.")
+def compare(bundles, metrics, variables, names, precision, baseline):
+    """Compare multiple .epx bundles on standard metrics.
+
+    \b
+    Built-in metrics:
+      attack_rate    % of population ever infected
+      peak           Peak value of a variable (default: first I-like _total)
+      peak_date      Date of peak value
+      total_deaths   Final value of death compartment
+      days_over:N    Days the median of a variable exceeds threshold N
+      final_value    Final value of a variable
+
+    \b
+    Examples:
+      epydemix compare baseline.epx early.epx late.epx
+      epydemix compare *.epx -m attack_rate,peak,total_deaths,days_over:500
+      epydemix compare baseline.epx early.epx -n Baseline,Early -b Baseline
+    """
+    from ..io.inspect import compare_bundles
+
+    # Parse names
+    if names:
+        name_list = names.split(",")
+        if len(name_list) != len(bundles):
+            _error_json("COMPARE_ERROR",
+                        f"Got {len(name_list)} names but {len(bundles)} bundles.")
+    else:
+        # Default: use directory stem
+        name_list = [Path(b).stem for b in bundles]
+
+    bundle_map = dict(zip(name_list, bundles))
+
+    # Parse options
+    metric_list = metrics.split(",") if metrics else None
+    var_list = variables.split(",") if variables else None
+
+    try:
+        result = compare_bundles(
+            bundle_map,
+            metrics=metric_list,
+            variables=var_list,
+            precision=precision,
+        )
+    except Exception as e:
+        _error_json("COMPARE_ERROR", str(e))
+
+    # Compute deltas if baseline specified
+    if baseline:
+        if baseline not in result:
+            _error_json("COMPARE_ERROR",
+                        f"Baseline '{baseline}' not found. "
+                        f"Available: {list(result.keys())}")
+        base_data = result[baseline]
+        deltas = {}
+        for scenario, metrics_data in result.items():
+            if scenario == baseline:
+                continue
+            scenario_delta = {}
+            for metric_name, metric_val in metrics_data.items():
+                base_val = base_data.get(metric_name, {})
+                # Compute delta on median values (numeric only)
+                if "median" in metric_val and "median" in base_val:
+                    bm = base_val["median"]
+                    sm = metric_val["median"]
+                    if (bm is not None and sm is not None
+                            and isinstance(bm, (int, float))
+                            and isinstance(sm, (int, float))):
+                        scenario_delta[metric_name] = round(sm - bm, precision)
+                elif "value" in metric_val and "value" in base_val:
+                    bv = base_val["value"]
+                    sv = metric_val["value"]
+                    if (bv is not None and sv is not None
+                            and isinstance(bv, (int, float))
+                            and isinstance(sv, (int, float))):
+                        scenario_delta[metric_name] = sv - bv
+            deltas[scenario] = scenario_delta
+        result["_deltas_vs_" + baseline] = deltas
+
+    _print_json(result, precision=precision)
 
 
 # ---------------------------------------------------------------------------

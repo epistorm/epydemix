@@ -327,6 +327,184 @@ class TestCLIInspect:
         assert result.exit_code != 0
 
 
+# ---------------------------------------------------------------------------
+# Config inheritance tests
+# ---------------------------------------------------------------------------
+
+class TestConfigInheritance:
+    def test_simple_inheritance(self, tmp_path):
+        """Overlay inherits model/simulation from base, overrides parameters."""
+        base_cfg = {
+            "model": {"type": "SIR"},
+            "simulation": {
+                "start_date": "2023-01-01",
+                "end_date": "2023-01-30",
+                "n_simulations": 5,
+            },
+            "parameters": {
+                "transmission_rate": 0.3,
+                "recovery_rate": 0.1,
+            },
+        }
+        overlay_cfg = {
+            "base": "base.yaml",
+            "parameters": {
+                "transmission_rate": 0.5,
+            },
+        }
+        _write_yaml(tmp_path, base_cfg, "base.yaml")
+        overlay_path = _write_yaml(tmp_path, overlay_cfg, "overlay.yaml")
+
+        from epydemix.cli.config import load_config
+        config = load_config(overlay_path)
+
+        # Model and simulation inherited
+        assert config["model"]["type"] == "SIR"
+        assert config["simulation"]["start_date"] == "2023-01-01"
+        # Parameter overridden
+        assert config["parameters"]["transmission_rate"] == 0.5
+        # Parameter inherited
+        assert config["parameters"]["recovery_rate"] == 0.1
+        # base key removed
+        assert "base" not in config
+
+    def test_list_replacement(self, tmp_path):
+        """Lists (like overrides) are replaced, not appended."""
+        base_cfg = {
+            "model": {"type": "SIR"},
+            "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-30"},
+            "parameters": {"transmission_rate": 0.3, "recovery_rate": 0.1},
+            "overrides": [
+                {"parameter": "transmission_rate", "start_date": "2023-01-10",
+                 "end_date": "2023-01-20", "value": 0.1},
+            ],
+        }
+        overlay_cfg = {
+            "base": "base.yaml",
+            "overrides": [
+                {"parameter": "transmission_rate", "start_date": "2023-01-15",
+                 "end_date": "2023-01-25", "value": 0.2},
+            ],
+        }
+        _write_yaml(tmp_path, base_cfg, "base.yaml")
+        overlay_path = _write_yaml(tmp_path, overlay_cfg, "overlay.yaml")
+
+        from epydemix.cli.config import load_config
+        config = load_config(overlay_path)
+
+        # Overlay's overrides replaced base's
+        assert len(config["overrides"]) == 1
+        assert config["overrides"][0]["value"] == 0.2
+
+    def test_chain_inheritance(self, tmp_path):
+        """Three-level chain: grandparent -> parent -> child."""
+        gp = {"model": {"type": "SIR"}, "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-30"},
+              "parameters": {"transmission_rate": 0.1, "recovery_rate": 0.05}}
+        parent = {"base": "gp.yaml", "parameters": {"transmission_rate": 0.3}}
+        child = {"base": "parent.yaml", "parameters": {"recovery_rate": 0.2}}
+
+        _write_yaml(tmp_path, gp, "gp.yaml")
+        _write_yaml(tmp_path, parent, "parent.yaml")
+        child_path = _write_yaml(tmp_path, child, "child.yaml")
+
+        from epydemix.cli.config import load_config
+        config = load_config(child_path)
+
+        assert config["parameters"]["transmission_rate"] == 0.3  # from parent
+        assert config["parameters"]["recovery_rate"] == 0.2       # from child
+
+    def test_circular_inheritance_raises(self, tmp_path):
+        a = {"base": "b.yaml", "model": {"type": "SIR"}}
+        b = {"base": "a.yaml", "simulation": {"start_date": "2023-01-01"}}
+        _write_yaml(tmp_path, a, "a.yaml")
+        _write_yaml(tmp_path, b, "b.yaml")
+
+        from epydemix.cli.config import load_config
+        with pytest.raises(ValueError, match="[Cc]ircular"):
+            load_config(str(tmp_path / "a.yaml"))
+
+    def test_run_with_inheritance(self, tmp_path):
+        """End-to-end: run a simulation using an overlay config."""
+        base_cfg = {
+            "model": {"type": "SIR"},
+            "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-20",
+                           "n_simulations": 3},
+            "parameters": {"transmission_rate": 0.3, "recovery_rate": 0.1},
+        }
+        overlay_cfg = {
+            "base": "base.yaml",
+            "parameters": {"transmission_rate": 0.5},
+        }
+        _write_yaml(tmp_path, base_cfg, "base.yaml")
+        overlay_path = _write_yaml(tmp_path, overlay_cfg, "overlay.yaml")
+        output = str(tmp_path / "out.epx")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", overlay_path, "-o", output])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+
+# ---------------------------------------------------------------------------
+# Compare command tests
+# ---------------------------------------------------------------------------
+
+class TestCLICompare:
+    def test_compare_two_bundles(self, tmp_path):
+        b1 = _make_bundle(tmp_path, "run1.epx")
+        b2 = _make_bundle(tmp_path, "run2.epx")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["compare", b1, b2])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "run1" in data
+        assert "run2" in data
+        # Default metrics
+        assert "attack_rate" in data["run1"]
+        assert "peak" in data["run1"]
+
+    def test_compare_with_names(self, tmp_path):
+        b1 = _make_bundle(tmp_path, "a.epx")
+        b2 = _make_bundle(tmp_path, "b.epx")
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "compare", b1, b2, "-n", "Baseline,Intervention"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "Baseline" in data
+        assert "Intervention" in data
+
+    def test_compare_with_baseline_deltas(self, tmp_path):
+        b1 = _make_bundle(tmp_path, "base.epx")
+        b2 = _make_bundle(tmp_path, "alt.epx")
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "compare", b1, b2, "-n", "Base,Alt", "-b", "Base"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "_deltas_vs_Base" in data
+        assert "Alt" in data["_deltas_vs_Base"]
+
+    def test_compare_custom_metrics(self, tmp_path):
+        b1 = _make_bundle(tmp_path, "r.epx")
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "compare", b1, "-m", "attack_rate,total_deaths"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "attack_rate" in data["r"]
+        assert "total_deaths" in data["r"]
+
+    def test_compare_days_over(self, tmp_path):
+        b1 = _make_bundle(tmp_path, "r.epx")
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "compare", b1, "-m", "days_over:100"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "days_over" in data["r"]
+        assert "threshold" in data["r"]["days_over"]
+
+
 class TestCLIPopulations:
     def test_populations_command(self):
         runner = CliRunner()
