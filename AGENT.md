@@ -482,6 +482,18 @@ add_figure_to_manifest(
 
 Subsequent `epydemix inspect results.epx manifest` calls will include the figure metadata under a `"figures"` key.
 
+**`figures` is a dict keyed by filename, not a list.** Iterate with `.items()`:
+
+```python
+import json, subprocess
+manifest = json.loads(subprocess.check_output(
+    ["epydemix", "inspect", "results.epx", "manifest"]))
+for filename, meta in manifest.get("figures", {}).items():
+    print(filename, "-", meta["description"])
+```
+
+Do not iterate as a list (`for f in figures`). Do not slice the dict (`figures[:3]`).
+
 ### Recipe 1: Epidemic curve with uncertainty bands
 
 The standard visualization — median trajectory with a shaded credible interval.
