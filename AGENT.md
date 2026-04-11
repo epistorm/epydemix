@@ -4,6 +4,15 @@ Epydemix is a Python library for compartmental epidemic modeling (SIR, SEIR, SIS
 
 All CLI commands print structured JSON to **stdout** and diagnostics to **stderr**. Parse stdout only.
 
+## How to work with epydemix
+
+Read this file before doing anything. Then follow these principles:
+
+- **Use the CLI for discovery and inspection.** `epydemix models`, `epydemix schema`, `epydemix defaults`, `epydemix inspect` — these are your primary tools. Do not read source code to figure out what's available.
+- **Use Python for analysis beyond what the CLI offers.** The CLI covers common queries (quantiles, summary, peak). For anything else (attack rates, scenario comparisons, custom metrics), write Python against the Parquet files. The manifest gives you full column schemas.
+- **Store figures inside the bundle.** Save plots to `<bundle>/figures/` and register them with `add_figure_to_manifest`. See the Visualization Recipes section.
+- **Work step by step.** Discover → build config → validate → run → inspect → analyze → visualize.
+
 ## Quick Start
 
 ```bash
