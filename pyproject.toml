@@ -31,11 +31,29 @@ dependencies = [
     "setuptools>=68.2.0"
 ]
 
+[project.optional-dependencies]
+io = [
+    "pyarrow>=12.0",
+]
+cli = [
+    "pyarrow>=12.0",
+    "click>=8.0",
+    "pyyaml>=6.0",
+]
+agent = [
+    "pyarrow>=12.0",
+    "click>=8.0",
+    "pyyaml>=6.0",
+]
+
 [project.urls]
 # Optional links related to your project
 homepage = "https://epydemix.org"  
 repository = "https://github.com/epistorm/epydemix"
 documentation = "https://epydemix.readthedocs.io/en/latest/"
+
+[project.scripts]
+epydemix = "epydemix.cli.main:main"
 
 [tool.setuptools]
 package-dir = { "" = "." }

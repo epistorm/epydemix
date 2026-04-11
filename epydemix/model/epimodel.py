@@ -5,6 +5,8 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 
+from ..parameters.registry import ParameterRegistry
+from ..parameters.spec import ParameterSpec
 from ..population.population import Population, load_epydemix_population
 from ..utils.utils import (
     apply_initial_conditions,
@@ -84,6 +86,7 @@ class EpiModel:
         self.transitions_idx = {}
         self.transition_functions = {}
         self.parameters = {}
+        self.parameter_registry = ParameterRegistry()
         self.definitions = {}
         self.overrides = {}
         self.Cs = {}
@@ -358,6 +361,17 @@ class EpiModel:
             raise ValueError(
                 "Either parameter_name and value or parameters_dict must be provided."
             )
+
+    def register_parameter_spec(self, spec: ParameterSpec) -> None:
+        """Register metadata for a parameter in the parameter registry.
+
+        This allows agents and external tools to discover what parameters
+        the model accepts, their valid ranges, units, and descriptions.
+
+        Args:
+            spec: A :class:`ParameterSpec` describing the parameter.
+        """
+        self.parameter_registry.register(spec)
 
     def get_parameter(self, parameter_name: str) -> Any:
         """

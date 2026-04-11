@@ -1,3 +1,4 @@
+from ..parameters.predefined_specs import seir_specs, sir_specs, sis_specs
 from .epimodel import EpiModel
 
 SUPPORTED_MODELS = ["SIR", "SEIR", "SIS"]
@@ -57,6 +58,9 @@ def create_sir(transmission_rate: float, recovery_rate: float) -> EpiModel:
         params="recovery_rate",
         kind="spontaneous",
     )
+    # Register parameter specs
+    for spec in sir_specs(transmission_rate, recovery_rate):
+        model.parameter_registry.register(spec)
     return model
 
 
@@ -90,6 +94,9 @@ def create_seir(
         params="recovery_rate",
         kind="spontaneous",
     )
+    # Register parameter specs
+    for spec in seir_specs(transmission_rate, incubation_rate, recovery_rate):
+        model.parameter_registry.register(spec)
     return model
 
 
@@ -114,4 +121,7 @@ def create_sis(transmission_rate: float, recovery_rate: float) -> EpiModel:
         params="recovery_rate",
         kind="spontaneous",
     )
+    # Register parameter specs
+    for spec in sis_specs(transmission_rate, recovery_rate):
+        model.parameter_registry.register(spec)
     return model

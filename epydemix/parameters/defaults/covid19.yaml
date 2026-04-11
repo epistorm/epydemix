@@ -1,0 +1,24 @@
+name: "COVID-19 (Omicron-like)"
+model_type: "SEIR"
+source: "Literature consensus values for Omicron-era COVID-19"
+description: >
+  Default parameters for a basic SEIR model of COVID-19, calibrated to
+  Omicron-era epidemiology. Transmission rate reflects a moderate scenario
+  without major interventions. Incubation ~3 days, infectious period ~7 days.
+
+parameters:
+  transmission_rate:
+    value: 0.4
+    range: [0.2, 0.8]
+    units: "1/days"
+    description: "Effective transmission rate per contact per day"
+  incubation_rate:
+    value: 0.33
+    range: [0.25, 0.5]
+    units: "1/days"
+    description: "Rate of progression from exposed to infectious (1/mean_incubation_period, ~3 days)"
+  recovery_rate:
+    value: 0.14
+    range: [0.1, 0.2]
+    units: "1/days"
+    description: "Rate of recovery from infection (1/mean_infectious_period, ~7 days)"

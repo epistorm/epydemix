@@ -228,3 +228,31 @@ class CalibrationResults:
             ]
 
         return pd.DataFrame(data)
+
+    def save(self, path: str, config: Optional[Dict] = None) -> Dict[str, Any]:
+        """Save results as an .epx bundle (Parquet + manifest).
+
+        Args:
+            path: Path for the bundle directory (e.g. ``"calibration.epx"``).
+            config: Optional config dict to include for reproducibility.
+
+        Returns:
+            The manifest dictionary.
+        """
+        from ..io.bundle import save_bundle
+
+        return save_bundle(self, path, config=config)
+
+    @staticmethod
+    def load(path: str) -> Dict[str, Any]:
+        """Load a bundle's manifest (lightweight, no data loaded).
+
+        Args:
+            path: Path to the .epx bundle directory.
+
+        Returns:
+            The manifest dictionary.
+        """
+        from ..io.bundle import load_bundle
+
+        return load_bundle(path)

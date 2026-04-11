@@ -1,0 +1,24 @@
+name: "Seasonal Influenza"
+model_type: "SEIR"
+source: "Literature consensus values for seasonal influenza (H3N2-like)"
+description: >
+  Default parameters for a basic SEIR model of seasonal influenza.
+  Shorter incubation (~2 days) and infectious period (~4-5 days) than
+  COVID-19. R0 typically 1.2-1.8 for seasonal strains.
+
+parameters:
+  transmission_rate:
+    value: 0.3
+    range: [0.15, 0.5]
+    units: "1/days"
+    description: "Effective transmission rate per contact per day"
+  incubation_rate:
+    value: 0.5
+    range: [0.33, 1.0]
+    units: "1/days"
+    description: "Rate of progression from exposed to infectious (1/mean_incubation_period, ~2 days)"
+  recovery_rate:
+    value: 0.22
+    range: [0.14, 0.33]
+    units: "1/days"
+    description: "Rate of recovery from infection (1/mean_infectious_period, ~4.5 days)"
