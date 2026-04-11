@@ -292,7 +292,7 @@ def populations():
     """List available population datasets."""
     try:
         from ..population.population import get_available_locations
-        locations = get_available_locations()
+        locations = get_available_locations()["location"].tolist()
         _print_json({"populations": locations})
     except Exception as e:
         _error_json("POPULATION_ERROR", str(e))

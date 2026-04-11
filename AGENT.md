@@ -20,6 +20,12 @@ Read this file before doing anything. Then follow these principles:
 epydemix models
 # → {"models": ["SIR", "SEIR", "SIS"]}
 
+# 1b. List named population datasets (461 countries/regions)
+epydemix populations
+# → {"populations": ["Afghanistan", "Albania", ..., "Zimbabwe"]}
+# For a flat single-group population of arbitrary size, use `population.size`
+# in the config instead (see Config Reference). Default size is 100,000.
+
 # 2. Inspect a model's parameter space
 epydemix schema SEIR
 # → JSON Schema with all parameters, bounds, defaults, descriptions
@@ -111,7 +117,9 @@ parameters:
 population:
   name: "Italy"                     # an epydemix population dataset
   contact_layers: ["home", "work", "school", "community"]
-  # If omitted, a default single-group population is used.
+  # If omitted entirely, a single-group population of 100,000 is used.
+  # Use `size` to change the flat-population size (no named dataset needed):
+  size: 500000                       # optional; default 100,000
 
 # ── Simulation ───────────────────────────────────────────────────
 simulation:

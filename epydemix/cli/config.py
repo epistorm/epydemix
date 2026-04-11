@@ -120,6 +120,9 @@ def build_model_from_config(config: Dict[str, Any]) -> EpiModel:
     model_type = model_cfg.get("type", "custom")
     params = config.get("parameters", {})
 
+    # Population config (read early so size is available at model construction)
+    pop_cfg = config.get("population", {})
+
     # Build model
     if model_type in SUPPORTED_MODELS:
         model = load_predefined_model(model_type, **params)
@@ -130,6 +133,7 @@ def build_model_from_config(config: Dict[str, Any]) -> EpiModel:
             compartments=compartments,
             parameters=params,
             use_default_population=True,
+            default_population_size=pop_cfg.get("size", 100_000),
         )
         # Add transitions
         for tr in model_cfg.get("transitions", []):
@@ -145,7 +149,6 @@ def build_model_from_config(config: Dict[str, Any]) -> EpiModel:
             )
 
     # Population
-    pop_cfg = config.get("population", {})
     if "name" in pop_cfg and pop_cfg["name"] != "default":
         model.import_epydemix_population(
             population_name=pop_cfg["name"],
