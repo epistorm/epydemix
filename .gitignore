@@ -175,4 +175,7 @@ cython_debug/
 
 .DS_Store
 
+# Epydemix result bundles (output artifacts, not source)
+*.epx/
+
 epydemix-data-vtest

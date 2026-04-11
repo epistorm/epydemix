@@ -123,10 +123,14 @@ def _save_simulation_bundle(
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2, cls=NumpySafeEncoder)
 
+    # Create figures/ subdirectory for agent-produced visualizations
+    (path / "figures").mkdir(exist_ok=True)
+
     # Build and write manifest
     manifest = build_simulation_manifest(
         results, str(path), config=config, file_sizes=file_sizes
     )
+    manifest["figures"] = {}
     manifest_path = path / "manifest.json"
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2, cls=NumpySafeEncoder)
@@ -198,10 +202,14 @@ def _save_calibration_bundle(
             with open(path / "config.json", "w") as f:
                 json.dump(config, f, indent=2, cls=NumpySafeEncoder)
 
+    # Create figures/ subdirectory for agent-produced visualizations
+    (path / "figures").mkdir(exist_ok=True)
+
     # Build and write manifest
     manifest = build_calibration_manifest(
         results, str(path), config=config, file_sizes=file_sizes
     )
+    manifest["figures"] = {}
     with open(path / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2, cls=NumpySafeEncoder)
 
@@ -271,3 +279,55 @@ def load_bundle_dataframe(
         raise FileNotFoundError(f"Parquet file not found: {file_path}")
 
     return pd.read_parquet(file_path, columns=columns, filters=filters)
+
+
+def add_figure_to_manifest(
+    bundle_path: str,
+    filename: str,
+    description: str,
+    variables: Optional[List[str]] = None,
+) -> None:
+    """Register a figure in the bundle's manifest.
+
+    Call this after saving a plot to ``<bundle>/figures/<filename>``.
+    It updates ``manifest.json`` so that subsequent ``inspect manifest``
+    calls include the figure metadata.
+
+    Args:
+        bundle_path: Path to the ``.epx`` bundle directory.
+        filename: Name of the figure file inside ``figures/``
+            (e.g. ``"epidemic_curve.png"``).
+        description: One-line description of what the figure shows.
+        variables: Optional list of variable names depicted in the figure.
+
+    Raises:
+        FileNotFoundError: If the bundle, manifest, or figure file is missing.
+    """
+    bp = Path(bundle_path)
+    manifest_path = bp / "manifest.json"
+    figure_path = bp / "figures" / filename
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"No manifest.json found in '{bp}'. Is this a valid .epx bundle?"
+        )
+    if not figure_path.exists():
+        raise FileNotFoundError(
+            f"Figure file not found: {figure_path}. "
+            f"Save it to <bundle>/figures/ before registering."
+        )
+
+    with open(manifest_path, "r") as f:
+        manifest = json.load(f)
+
+    if "figures" not in manifest:
+        manifest["figures"] = {}
+
+    entry: Dict[str, Any] = {"description": description}
+    if variables:
+        entry["variables"] = variables
+
+    manifest["figures"][filename] = entry
+
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2, cls=NumpySafeEncoder)

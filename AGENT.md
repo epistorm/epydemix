@@ -375,6 +375,177 @@ initial_conditions:
   D: 0.0
 ```
 
+## Visualization Recipes
+
+Epydemix does not produce figures — you write Python with matplotlib against the Parquet files. Figures are stored **inside the bundle** at `<bundle>/figures/` and registered in the manifest so they travel with the data.
+
+After saving a figure, call `add_figure_to_manifest` to record it:
+
+```python
+from epydemix.io import add_figure_to_manifest
+
+# After plt.savefig("results.epx/figures/epidemic_curve.png", ...)
+add_figure_to_manifest(
+    "results.epx",
+    "epidemic_curve.png",
+    description="Infection time-series with 90% CI bands",
+    variables=["I_total"],
+)
+```
+
+Subsequent `epydemix inspect results.epx manifest` calls will include the figure metadata under a `"figures"` key.
+
+### Recipe 1: Epidemic curve with uncertainty bands
+
+The standard visualization — median trajectory with a shaded credible interval.
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+BUNDLE = "results.epx"
+VARS = ["I_total"]  # change to plot multiple variables
+
+comp = pd.read_parquet(f"{BUNDLE}/compartments.parquet",
+                       columns=["sim_id", "date"] + VARS)
+comp["date"] = pd.to_datetime(comp["date"])
+
+fig, ax = plt.subplots(figsize=(10, 5))
+for var in VARS:
+    piv = comp.pivot(index="date", columns="sim_id", values=var)
+    median = piv.quantile(0.5, axis=1)
+    lo = piv.quantile(0.05, axis=1)
+    hi = piv.quantile(0.95, axis=1)
+    ax.plot(median.index, median.values, label=var, linewidth=2)
+    ax.fill_between(median.index, lo.values, hi.values, alpha=0.2)
+
+ax.set_ylabel("Count")
+ax.legend()
+ax.grid(True, alpha=0.3)
+fig.autofmt_xdate()
+fig.tight_layout()
+fig.savefig(f"{BUNDLE}/figures/epidemic_curve.png", dpi=150)
+
+from epydemix.io import add_figure_to_manifest
+add_figure_to_manifest(BUNDLE, "epidemic_curve.png",
+                       "Epidemic curve with 90% CI bands", VARS)
+```
+
+### Recipe 2: Scenario comparison
+
+Overlay multiple bundles to compare intervention strategies.
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+scenarios = {
+    "Baseline": "baseline.epx",
+    "Early intervention": "early.epx",
+    "Late intervention": "late.epx",
+}
+VAR = "I_total"
+
+fig, ax = plt.subplots(figsize=(10, 5))
+for name, bundle in scenarios.items():
+    comp = pd.read_parquet(f"{bundle}/compartments.parquet",
+                           columns=["sim_id", "date", VAR])
+    comp["date"] = pd.to_datetime(comp["date"])
+    piv = comp.pivot(index="date", columns="sim_id", values=VAR)
+    median = piv.quantile(0.5, axis=1)
+    lo, hi = piv.quantile(0.05, axis=1), piv.quantile(0.95, axis=1)
+    ax.plot(median.index, median, label=name, linewidth=2)
+    ax.fill_between(median.index, lo, hi, alpha=0.15)
+
+ax.set_ylabel(VAR)
+ax.legend()
+ax.grid(True, alpha=0.3)
+fig.autofmt_xdate()
+fig.tight_layout()
+fig.savefig("baseline.epx/figures/scenario_comparison.png", dpi=150)
+
+from epydemix.io import add_figure_to_manifest
+add_figure_to_manifest("baseline.epx", "scenario_comparison.png",
+                       f"Scenario comparison: {VAR}", [VAR])
+```
+
+### Recipe 3: Hospital capacity analysis
+
+Plot hospitalizations against a capacity threshold.
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+BUNDLE = "results.epx"
+CAPACITY = 500  # bed threshold
+
+comp = pd.read_parquet(f"{BUNDLE}/compartments.parquet",
+                       columns=["sim_id", "date", "H_total"])
+comp["date"] = pd.to_datetime(comp["date"])
+piv = comp.pivot(index="date", columns="sim_id", values="H_total")
+median = piv.quantile(0.5, axis=1)
+lo, hi = piv.quantile(0.05, axis=1), piv.quantile(0.95, axis=1)
+
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(median.index, median, color="steelblue", linewidth=2, label="Median")
+ax.fill_between(median.index, lo, hi, alpha=0.2, color="steelblue", label="90% CI")
+ax.axhline(CAPACITY, color="red", linestyle="--", linewidth=1, label=f"Capacity ({CAPACITY})")
+days_over = (median > CAPACITY).sum()
+ax.set_title(f"Hospital census — {days_over} days over capacity")
+ax.set_ylabel("Hospital census")
+ax.legend()
+ax.grid(True, alpha=0.3)
+fig.autofmt_xdate()
+fig.tight_layout()
+fig.savefig(f"{BUNDLE}/figures/hospital_capacity.png", dpi=150)
+
+from epydemix.io import add_figure_to_manifest
+add_figure_to_manifest(BUNDLE, "hospital_capacity.png",
+                       f"Hospital census vs {CAPACITY}-bed capacity",
+                       ["H_total"])
+```
+
+### Recipe 4: Calibration fit vs. observed data
+
+Compare simulated quantiles against the data the model was calibrated to.
+
+```python
+import json
+import matplotlib.pyplot as plt
+
+BUNDLE = "calibration.epx"
+VAR = "I_total"
+
+# Use the CLI to get fit data as JSON
+import subprocess
+result = subprocess.run(
+    ["python", "-m", "epydemix.cli.main", "inspect", BUNDLE, "fit",
+     "-v", VAR, "-q", "0.05,0.5,0.95"],
+    capture_output=True, text=True,
+)
+fit = json.loads(result.stdout)
+
+fig, ax = plt.subplots(figsize=(10, 5))
+ts = range(len(fit[VAR]["0.5"]))
+ax.plot(ts, fit[VAR]["0.5"], color="steelblue", linewidth=2, label="Median fit")
+ax.fill_between(ts, fit[VAR]["0.05"], fit[VAR]["0.95"],
+                alpha=0.2, color="steelblue", label="90% CI")
+if "observed" in fit:
+    obs = fit["observed"]
+    ax.scatter(range(len(obs[VAR])), obs[VAR],
+               color="black", s=20, zorder=5, label="Observed")
+ax.set_ylabel(VAR)
+ax.legend()
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+fig.savefig(f"{BUNDLE}/figures/calibration_fit.png", dpi=150)
+
+from epydemix.io import add_figure_to_manifest
+add_figure_to_manifest(BUNDLE, "calibration_fit.png",
+                       f"Calibration fit vs observed: {VAR}", [VAR])
+```
+
 ## Error Handling
 
 ### Exit codes
