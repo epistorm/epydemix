@@ -856,6 +856,38 @@ epydemix inspect projection.epx quantiles -v Infected_total -q 0.05,0.5,0.95
 epydemix compare baseline_proj.epx intervention_proj.epx -n Baseline,Intervention
 ```
 
+## Bundle Naming
+
+Choose descriptive names for output bundles — the bundle filename is the primary identifier in downstream commands. Generic names like `results.epx` become unreadable when you have several scenarios, and re-running a command with the same `-o` path silently overwrites the previous bundle.
+
+Good naming practice: encode the scenario's distinguishing feature in the bundle name.
+
+```bash
+# Instead of this:
+epydemix run config1.yaml -o results.epx
+epydemix run config2.yaml -o results2.epx
+
+# Do this:
+epydemix run baseline.yaml        -o baseline_no_intervention.epx
+epydemix run early_closure.yaml   -o early_school_closure.epx
+epydemix run late_closure.yaml    -o late_school_closure.epx
+```
+
+This pays off immediately with `epydemix compare`, which defaults to the bundle directory stem as the scenario label:
+
+```bash
+# Readable output with descriptive names — no --names flag needed:
+epydemix compare baseline_no_intervention.epx early_school_closure.epx late_school_closure.epx
+```
+
+For calibration and projection workflows, a useful convention is `{model}_{purpose}.epx`:
+
+```bash
+epydemix calibrate cal.yaml   -o sir_calibration.epx
+epydemix project sir_calibration.epx -o sir_proj_baseline.epx
+epydemix project sir_calibration.epx -c intervention.yaml -o sir_proj_school_closure.epx
+```
+
 ## Shell and Path Conventions
 
 **Always use absolute paths with the CLI.** The working directory persists across Bash tool calls (a `cd` in one call affects subsequent calls), but the CLI resolves relative config paths from the current working directory. To avoid confusion:

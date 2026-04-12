@@ -43,7 +43,14 @@ def save_bundle(
     from ..calibration.calibration_results import CalibrationResults
     from ..model.simulation_results import SimulationResults
 
+    import sys
+
     path = Path(path)
+    if path.exists() and (path / "manifest.json").exists():
+        print(
+            f"Warning: overwriting existing bundle at {path}",
+            file=sys.stderr,
+        )
     path.mkdir(parents=True, exist_ok=True)
 
     if isinstance(results, SimulationResults):
