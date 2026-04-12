@@ -343,12 +343,33 @@ def _cmd_fit(
 
     traj_df = pd.read_parquet(traj_path)
 
+    # The trajectory "variable" column may be "data" (the internal key used by
+    # ABCSampler) rather than the user-facing variable name (e.g. "Infected_total").
+    # Build a mapping from user-facing name → trajectory key so that both work.
+    traj_vars = set(traj_df["variable"].unique())
+    target_variable = manifest.get("calibration", {}).get("target_variable")
+
     if variables is None:
-        variables = list(traj_df["variable"].unique())
+        # Default: expose the target variable name if known, else raw keys
+        if target_variable and "data" in traj_vars:
+            variables = [target_variable]
+        else:
+            variables = list(traj_vars)
+
+    # Map user-requested variable names to actual keys in the parquet.
+    # "data" is the internal fallback key written by ABCSampler when only one
+    # target variable is calibrated.
+    def _resolve_traj_key(var: str) -> str:
+        if var in traj_vars:
+            return var
+        if "data" in traj_vars and var == target_variable:
+            return "data"
+        return var  # will produce empty df → skipped below
 
     result: Dict[str, Any] = {}
     for var in variables:
-        var_df = traj_df[traj_df["variable"] == var]
+        traj_key = _resolve_traj_key(var)
+        var_df = traj_df[traj_df["variable"] == traj_key]
         if var_df.empty:
             continue
 
@@ -360,7 +381,15 @@ def _cmd_fit(
         result[var] = var_result
 
     if observed is not None:
-        result["observed"] = observed.to_dict(orient="list")
+        # observed_data.parquet is in long format: [timestep, variable, value].
+        # Reshape to {"var_name": [values...]} so agents can do fit["observed"][VAR].
+        obs_dict: Dict[str, Any] = {}
+        for var_name, grp in observed.groupby("variable"):
+            grp_sorted = grp.sort_values("timestep")
+            obs_dict[str(var_name)] = [
+                round(float(v), precision) for v in grp_sorted["value"].values
+            ]
+        result["observed"] = obs_dict
 
     return result
 

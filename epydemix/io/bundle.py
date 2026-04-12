@@ -172,18 +172,32 @@ def _save_calibration_bundle(
         dist_df.to_parquet(dist_path, index=False, engine="pyarrow")
         file_sizes["distances"] = os.path.getsize(dist_path) / (1024 * 1024)
 
+    # Resolve the target variable name from the config (used to label trajectories
+    # and observed data with the user-facing variable name rather than the internal
+    # "data" key used by ABCSampler).
+    target_variable = None
+    if config:
+        target_variable = config.get("calibration", {}).get("target_variable")
+
+    def _resolve_var_name(internal_key: str) -> str:
+        """Map internal 'data' key to the actual target variable name if known."""
+        if internal_key == "data" and target_variable:
+            return target_variable
+        return internal_key
+
     # Save selected trajectories (last generation only, as compartment arrays)
     selected = results.get_selected_trajectories()
-    if selected:
+    if selected is not None and len(selected) > 0:
         traj_rows = []
         for sim_id, sim_data in enumerate(selected):
             for key, values in sim_data.items():
                 if isinstance(values, np.ndarray) and values.ndim == 1:
+                    var_name = _resolve_var_name(key)
                     for t, val in enumerate(values):
                         traj_rows.append({
                             "sim_id": sim_id,
                             "timestep": t,
-                            "variable": key,
+                            "variable": var_name,
                             "value": float(val),
                         })
         if traj_rows:
@@ -191,6 +205,24 @@ def _save_calibration_bundle(
             traj_path = path / "trajectories.parquet"
             traj_df.to_parquet(traj_path, index=False, engine="pyarrow")
             file_sizes["trajectories"] = os.path.getsize(traj_path) / (1024 * 1024)
+
+    # Save observed data used for calibration so the fit command can compare it
+    # against the accepted trajectories.
+    if results.observed_data is not None:
+        obs_rows = []
+        for internal_key, values in results.observed_data.items():
+            var_name = _resolve_var_name(internal_key)
+            for t, val in enumerate(np.asarray(values)):
+                obs_rows.append({
+                    "timestep": t,
+                    "variable": var_name,
+                    "value": float(val),
+                })
+        if obs_rows:
+            obs_df = pd.DataFrame(obs_rows)
+            obs_path = path / "observed_data.parquet"
+            obs_df.to_parquet(obs_path, index=False, engine="pyarrow")
+            file_sizes["observed_data"] = os.path.getsize(obs_path) / (1024 * 1024)
 
     # Save config
     if config:

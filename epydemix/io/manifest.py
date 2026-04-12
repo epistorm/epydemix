@@ -177,16 +177,24 @@ def build_calibration_manifest(
     param_names = list(posterior_df.columns) if posterior_df is not None else []
     n_particles = len(posterior_df) if posterior_df is not None else 0
 
+    target_variable = None
+    if config:
+        target_variable = config.get("calibration", {}).get("target_variable")
+
+    calibration_section = {
+        "strategy": results.calibration_strategy,
+        "n_generations": n_generations,
+        "n_particles": n_particles,
+        "calibrated_parameters": param_names,
+    }
+    if target_variable:
+        calibration_section["target_variable"] = target_variable
+
     manifest = {
         "type": "CalibrationResults",
         "epydemix_version": _get_version(),
         "created_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-        "calibration": {
-            "strategy": results.calibration_strategy,
-            "n_generations": n_generations,
-            "n_particles": n_particles,
-            "calibrated_parameters": param_names,
-        },
+        "calibration": calibration_section,
         "parameters_used": _scalar_params(results.calibration_params),
         "files": {
             "posterior": {
@@ -200,6 +208,28 @@ def build_calibration_manifest(
             "distances": {
                 "path": "distances.parquet",
                 "description": "Distance values per generation.",
+            },
+            "trajectories": {
+                "path": "trajectories.parquet",
+                "description": "Accepted simulated trajectories (last generation). "
+                               "Long format: [sim_id, timestep, variable, value]. "
+                               "Use `epydemix inspect <bundle> fit` to query.",
+                "columns": {
+                    "sim_id": {"dtype": "int64"},
+                    "timestep": {"dtype": "int64"},
+                    "variable": {"dtype": "str"},
+                    "value": {"dtype": "float64"},
+                },
+            },
+            "observed_data": {
+                "path": "observed_data.parquet",
+                "description": "Observed data used for calibration. "
+                               "Long format: [timestep, variable, value].",
+                "columns": {
+                    "timestep": {"dtype": "int64"},
+                    "variable": {"dtype": "str"},
+                    "value": {"dtype": "float64"},
+                },
             },
         },
         "usage_hints": {

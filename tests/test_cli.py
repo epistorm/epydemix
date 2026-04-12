@@ -505,6 +505,304 @@ class TestCLICompare:
         assert "threshold" in data["r"]["days_over"]
 
 
+# ---------------------------------------------------------------------------
+# Calibration config & CLI
+# ---------------------------------------------------------------------------
+
+def _calibration_config(observed_data=None):
+    """Return a minimal calibration config for SIR with inline observed data."""
+    # Synthetic declining curve (looks like infected counts)
+    obs = observed_data if observed_data is not None else [
+        100, 95, 90, 86, 82, 78, 74, 70, 67, 64,
+        61, 58, 55, 53, 50, 48, 46, 44, 42, 40,
+    ]
+    return {
+        "model": {"type": "SIR"},
+        "simulation": {
+            "start_date": "2023-01-01",
+            "end_date": "2023-01-20",
+        },
+        "parameters": {
+            "transmission_rate": 0.3,
+            "recovery_rate": 0.1,
+        },
+        "initial_conditions": {
+            "Susceptible": 0.99,
+            "Infected": 0.01,
+            "Recovered": 0.0,
+        },
+        "calibration": {
+            "strategy": "top_fraction",
+            "priors": {
+                "transmission_rate": {
+                    "distribution": "uniform",
+                    "low": 0.05,
+                    "high": 0.8,
+                },
+            },
+            "observed_data": obs,
+            "target_variable": "Infected_total",
+            "distance": "rmse",
+            "top_fraction": 0.5,
+            "n_simulations": 10,
+        },
+    }
+
+
+class TestCalibrationConfig:
+    """Tests for calibration config validation and building."""
+
+    def test_build_prior_uniform(self):
+        from epydemix.cli.config import build_prior
+        d = build_prior({"distribution": "uniform", "low": 0.1, "high": 0.6})
+        # Should produce values in [0.1, 0.6]
+        samples = d.rvs(1000)
+        assert samples.min() >= 0.1 - 1e-9
+        assert samples.max() <= 0.6 + 1e-9
+
+    def test_build_prior_normal(self):
+        from epydemix.cli.config import build_prior
+        d = build_prior({"distribution": "normal", "mean": 0.3, "std": 0.05})
+        assert abs(d.mean() - 0.3) < 1e-6
+
+    def test_build_prior_truncnorm(self):
+        from epydemix.cli.config import build_prior
+        d = build_prior({
+            "distribution": "truncnorm",
+            "mean": 0.3, "std": 0.1,
+            "low": 0.1, "high": 0.5,
+        })
+        samples = d.rvs(1000)
+        assert samples.min() >= 0.1 - 1e-9
+        assert samples.max() <= 0.5 + 1e-9
+
+    def test_build_prior_unknown(self):
+        from epydemix.cli.config import build_prior
+        with pytest.raises(ValueError, match="Unknown distribution"):
+            build_prior({"distribution": "magic"})
+
+    def test_build_priors(self):
+        from epydemix.cli.config import build_priors
+        cal_cfg = {
+            "priors": {
+                "beta": {"distribution": "uniform", "low": 0.1, "high": 0.8},
+                "gamma": {"distribution": "normal", "mean": 0.1, "std": 0.02},
+            },
+        }
+        priors = build_priors(cal_cfg)
+        assert "beta" in priors
+        assert "gamma" in priors
+
+    def test_build_priors_empty_raises(self):
+        from epydemix.cli.config import build_priors
+        with pytest.raises(ValueError, match="priors is required"):
+            build_priors({"priors": {}})
+
+    def test_load_observed_data_inline(self):
+        from epydemix.cli.config import load_observed_data
+        data = load_observed_data({"observed_data": [1.0, 2.0, 3.0]})
+        assert len(data) == 3
+        assert data[1] == 2.0
+
+    def test_load_observed_data_csv(self, tmp_path):
+        from epydemix.cli.config import load_observed_data
+        csv_path = tmp_path / "obs.csv"
+        csv_path.write_text("date,cases\n2023-01-01,100\n2023-01-02,95\n")
+        data = load_observed_data(
+            {"observed_data": "obs.csv", "observed_column": "cases"},
+            config_dir=tmp_path,
+        )
+        assert len(data) == 2
+        assert data[0] == 100.0
+
+    def test_load_observed_data_csv_auto_column(self, tmp_path):
+        from epydemix.cli.config import load_observed_data
+        csv_path = tmp_path / "obs.csv"
+        csv_path.write_text("date,value\n2023-01-01,50\n2023-01-02,60\n")
+        data = load_observed_data(
+            {"observed_data": "obs.csv"},
+            config_dir=tmp_path,
+        )
+        # Two columns, no observed_column specified → should pick second column
+        assert data[0] == 50.0
+
+    def test_validate_calibration_config_valid(self):
+        from epydemix.cli.config import validate_calibration_config
+        cfg = _calibration_config()
+        result = validate_calibration_config(cfg)
+        assert result["valid"] is True
+
+    def test_validate_calibration_config_missing_priors(self):
+        from epydemix.cli.config import validate_calibration_config
+        cfg = _calibration_config()
+        del cfg["calibration"]["priors"]
+        result = validate_calibration_config(cfg)
+        assert result["valid"] is False
+        assert any("priors" in e for e in result["errors"])
+
+    def test_validate_calibration_config_bad_strategy(self):
+        from epydemix.cli.config import validate_calibration_config
+        cfg = _calibration_config()
+        cfg["calibration"]["strategy"] = "magic"
+        result = validate_calibration_config(cfg)
+        assert result["valid"] is False
+
+    def test_validate_calibration_config_bad_distance(self):
+        from epydemix.cli.config import validate_calibration_config
+        cfg = _calibration_config()
+        cfg["calibration"]["distance"] = "unknown_metric"
+        result = validate_calibration_config(cfg)
+        assert result["valid"] is False
+
+    def test_resolve_distance_function(self):
+        from epydemix.cli.config import _resolve_distance_function
+        fn = _resolve_distance_function("rmse")
+        assert callable(fn)
+        with pytest.raises(ValueError, match="Unknown distance"):
+            _resolve_distance_function("bogus")
+
+
+class TestCalibrateCLI:
+    """Tests for the `epydemix calibrate` CLI command."""
+
+    def test_calibrate_inline_data(self, tmp_path):
+        """Run calibration with inline observed data (top_fraction, fast)."""
+        cfg = _calibration_config()
+        config_path = _write_yaml(tmp_path, cfg, "cal.yaml")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "calibrate", config_path,
+            "-o", str(tmp_path / "cal.epx"),
+        ])
+        # Parse JSON from stdout (skip any leading non-JSON lines)
+        raw = result.output
+        if "{" in raw:
+            json_start = raw.index("{")
+            data = json.loads(raw[json_start:])
+            assert "type" in data or "calibration_strategy" in data or "files" in data
+        if result.exit_code != 0:
+            # Print stderr for debugging
+            print("STDERR:", result.output)
+        assert result.exit_code == 0
+
+        # Bundle should exist on disk
+        bundle_dir = tmp_path / "cal.epx"
+        assert bundle_dir.exists()
+        assert (bundle_dir / "manifest.json").exists()
+        assert (bundle_dir / "posterior.parquet").exists()
+
+    def test_calibrate_csv_observed(self, tmp_path):
+        """Run calibration with CSV observed data."""
+        # Write observed data CSV
+        csv_path = tmp_path / "observed.csv"
+        obs_values = [100, 95, 90, 86, 82, 78, 74, 70, 67, 64,
+                      61, 58, 55, 53, 50, 48, 46, 44, 42, 40]
+        csv_path.write_text(
+            "date,cases\n" +
+            "\n".join(f"2023-01-{i+1:02d},{v}" for i, v in enumerate(obs_values))
+            + "\n"
+        )
+
+        cfg = _calibration_config()
+        cfg["calibration"]["observed_data"] = "observed.csv"
+        cfg["calibration"]["observed_column"] = "cases"
+        config_path = _write_yaml(tmp_path, cfg, "cal_csv.yaml")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "calibrate", config_path,
+            "-o", str(tmp_path / "cal_csv.epx"),
+        ])
+        assert result.exit_code == 0
+
+    def test_calibrate_invalid_config(self, tmp_path):
+        """Calibrate with missing priors → should fail."""
+        cfg = _calibration_config()
+        del cfg["calibration"]["priors"]
+        config_path = _write_yaml(tmp_path, cfg, "bad_cal.yaml")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "calibrate", config_path,
+            "-o", str(tmp_path / "bad.epx"),
+        ])
+        assert result.exit_code == 1
+
+    def test_calibrate_inspect_posterior(self, tmp_path):
+        """Run calibration, then inspect posterior."""
+        cfg = _calibration_config()
+        config_path = _write_yaml(tmp_path, cfg, "cal.yaml")
+        bundle_path = str(tmp_path / "cal_post.epx")
+
+        runner = CliRunner()
+        # Run calibration
+        result = runner.invoke(cli, [
+            "calibrate", config_path, "-o", bundle_path,
+        ])
+        assert result.exit_code == 0
+
+        # Inspect posterior
+        result = runner.invoke(cli, [
+            "inspect", bundle_path, "posterior",
+        ])
+        assert result.exit_code == 0
+        raw = result.output
+        if "{" in raw:
+            data = json.loads(raw[raw.index("{"):])
+            assert "transmission_rate" in data
+
+    def test_calibrate_with_inheritance(self, tmp_path):
+        """Calibration config can inherit from a base simulation config."""
+        # Write base config
+        base_cfg = {
+            "model": {"type": "SIR"},
+            "simulation": {
+                "start_date": "2023-01-01",
+                "end_date": "2023-01-20",
+            },
+            "parameters": {
+                "transmission_rate": 0.3,
+                "recovery_rate": 0.1,
+            },
+            "initial_conditions": {
+                "Susceptible": 0.99,
+                "Infected": 0.01,
+                "Recovered": 0.0,
+            },
+        }
+        _write_yaml(tmp_path, base_cfg, "base.yaml")
+
+        # Write calibration overlay
+        cal_overlay = {
+            "base": "base.yaml",
+            "calibration": {
+                "strategy": "top_fraction",
+                "priors": {
+                    "transmission_rate": {
+                        "distribution": "uniform",
+                        "low": 0.05,
+                        "high": 0.8,
+                    },
+                },
+                "observed_data": [100, 95, 90, 86, 82, 78, 74, 70, 67, 64,
+                                  61, 58, 55, 53, 50, 48, 46, 44, 42, 40],
+                "target_variable": "Infected_total",
+                "distance": "rmse",
+                "top_fraction": 0.5,
+                "n_simulations": 10,
+            },
+        }
+        config_path = _write_yaml(tmp_path, cal_overlay, "cal_inherit.yaml")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "calibrate", config_path,
+            "-o", str(tmp_path / "cal_inherit.epx"),
+        ])
+        assert result.exit_code == 0
+
+
 class TestCLIPopulations:
     def test_populations_command(self):
         runner = CliRunner()

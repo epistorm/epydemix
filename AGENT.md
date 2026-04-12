@@ -611,28 +611,29 @@ Compare simulated quantiles against the data the model was calibrated to.
 
 ```python
 import json
+import subprocess
 import matplotlib.pyplot as plt
 
 BUNDLE = "calibration.epx"
-VAR = "I_total"
+VAR = "Infected_total"   # must match target_variable in the calibration config
 
 # Use the CLI to get fit data as JSON
-import subprocess
 result = subprocess.run(
-    ["python", "-m", "epydemix.cli.main", "inspect", BUNDLE, "fit",
-     "-v", VAR, "-q", "0.05,0.5,0.95"],
+    ["epydemix", "inspect", BUNDLE, "fit", "-v", VAR, "-q", "0.05,0.5,0.95"],
     capture_output=True, text=True,
 )
 fit = json.loads(result.stdout)
+# fit structure: {VAR: {"0.05": [...], "0.5": [...], "0.95": [...]},
+#                 "observed": {VAR: [...]}}
 
-fig, ax = plt.subplots(figsize=(10, 5))
 ts = range(len(fit[VAR]["0.5"]))
+fig, ax = plt.subplots(figsize=(10, 5))
 ax.plot(ts, fit[VAR]["0.5"], color="steelblue", linewidth=2, label="Median fit")
 ax.fill_between(ts, fit[VAR]["0.05"], fit[VAR]["0.95"],
                 alpha=0.2, color="steelblue", label="90% CI")
-if "observed" in fit:
-    obs = fit["observed"]
-    ax.scatter(range(len(obs[VAR])), obs[VAR],
+if "observed" in fit and VAR in fit["observed"]:
+    obs_vals = fit["observed"][VAR]
+    ax.scatter(range(len(obs_vals)), obs_vals,
                color="black", s=20, zorder=5, label="Observed")
 ax.set_ylabel(VAR)
 ax.legend()
@@ -644,6 +645,142 @@ from epydemix.io import add_figure_to_manifest
 add_figure_to_manifest(BUNDLE, "calibration_fit.png",
                        f"Calibration fit vs observed: {VAR}", [VAR])
 ```
+
+## Calibration
+
+Calibration fits model parameters to observed data using Approximate Bayesian Computation (ABC). The `calibrate` command works like `run`: you write a config, validate it, and submit it. The config is the same as a simulation config, plus a `calibration` section.
+
+### Calibration config
+
+```yaml
+model:
+  type: SEIR
+
+parameters:
+  incubation_rate: 0.2          # fixed — not calibrated
+
+simulation:
+  start_date: "2024-01-01"
+  end_date: "2024-06-30"
+
+initial_conditions:
+  Susceptible: 0.999
+  Exposed: 0.0005
+  Infected: 0.0005
+  Recovered: 0.0
+
+calibration:
+  strategy: smc                 # smc | rejection | top_fraction
+  priors:
+    transmission_rate:
+      distribution: uniform
+      low: 0.1
+      high: 0.8
+    recovery_rate:
+      distribution: uniform
+      low: 0.05
+      high: 0.3
+  observed_data: observed.csv   # path to CSV, or inline list
+  observed_column: cases        # column name in CSV (auto-detected if 2-column CSV)
+  target_variable: Infected_total  # model variable to compare against observed data
+  distance: rmse                # rmse | mae | wmape | mape
+  # Strategy-specific settings:
+  num_particles: 500
+  num_generations: 10
+```
+
+Parameters listed in `calibration.priors` are sampled from the specified distributions during calibration. Parameters in the `parameters` section that are NOT in `priors` are held fixed. Every parameter the model needs must appear in one place or the other.
+
+### Observed data
+
+The `observed_data` field accepts either a file path or an inline list:
+
+```yaml
+# File path (CSV, resolved relative to config file)
+observed_data: data/weekly_cases.csv
+observed_column: cases
+
+# Inline (for quick testing)
+observed_data: [100, 95, 90, 86, 82, 78, 74, 70, 67, 64]
+```
+
+The observed data array must have the same length as the simulation time-series for the target variable.
+
+### Prior distributions
+
+| Distribution | Parameters | Example |
+|---|---|---|
+| `uniform` | `low`, `high` | `{distribution: uniform, low: 0.1, high: 0.8}` |
+| `normal` | `mean`, `std` | `{distribution: normal, mean: 0.3, std: 0.05}` |
+| `truncnorm` | `mean`, `std`, `low`, `high` | `{distribution: truncnorm, mean: 0.3, std: 0.1, low: 0.1, high: 0.5}` |
+| `beta` | `a`, `b` | `{distribution: beta, a: 2, b: 5}` |
+| `gamma` | `a`, `scale` | `{distribution: gamma, a: 2.0, scale: 0.1}` |
+| `lognormal` | `shape`, `scale` | `{distribution: lognormal, shape: 0.5, scale: 1.0}` |
+| `expon` | `scale` | `{distribution: expon, scale: 0.1}` |
+
+### Strategies
+
+**`smc`** (Sequential Monte Carlo) — the default and recommended strategy. Iteratively refines the posterior through multiple generations. Settings: `num_particles` (default 1000), `num_generations` (default 10), `epsilon_quantile_level` (default 0.5), `minimum_epsilon`, `total_simulations_budget`.
+
+**`rejection`** — simple ABC rejection sampling. Accepts particles whose distance to observed data is below a threshold. Settings: `epsilon` (default 0.1), `num_particles` (default 1000), `total_simulations_budget`.
+
+**`top_fraction`** — runs a fixed number of simulations and keeps the best-fitting fraction. Settings: `top_fraction` (default 0.05), `n_simulations` (default 100).
+
+### Running calibration
+
+```bash
+# Validate the calibration config
+epydemix validate calibrate_config.yaml
+
+# Run calibration
+epydemix calibrate calibrate_config.yaml -o calibration.epx
+# → manifest JSON to stdout; calibration.epx/ directory on disk
+
+# Inspect the posterior
+epydemix inspect calibration.epx posterior
+# → {"transmission_rate": {"mean": 0.28, "std": 0.03, "ci95": [0.23, 0.33], "median": 0.27}, ...}
+
+# Inspect calibration fit vs. observed data
+epydemix inspect calibration.epx fit -v Infected_total -q 0.05,0.5,0.95
+```
+
+### Calibration bundle structure
+
+```
+calibration.epx/
+  manifest.json
+  posterior.parquet     # parameter samples per generation
+  distances.parquet     # distance values per generation
+  trajectories.parquet  # selected trajectories (last generation)
+  config.yaml           # config that produced this run
+  figures/              # for agent-produced visualizations
+```
+
+### Calibration workflow
+
+```bash
+# 1. Write a simulation config for your model
+# 2. Add a calibration section with priors and observed data
+# 3. Validate
+epydemix validate cal_config.yaml
+# 4. Run calibration (may take minutes depending on strategy settings)
+epydemix calibrate cal_config.yaml -o calibration.epx
+# 5. Check posterior parameter estimates
+epydemix inspect calibration.epx posterior
+# 6. Check fit quality
+epydemix inspect calibration.epx fit -v Infected_total -q 0.05,0.5,0.95
+# 7. Visualize (see Recipe 4 in Visualization Recipes)
+```
+
+Config inheritance works with calibration configs: write a base simulation config, then an overlay that adds only the `calibration` section. This keeps the model definition and the calibration setup separate and reusable.
+
+## Shell and Path Conventions
+
+**Always use absolute paths with the CLI.** The working directory persists across Bash tool calls (a `cd` in one call affects subsequent calls), but the CLI resolves relative config paths from the current working directory. To avoid confusion:
+
+- Use absolute paths for config files, output bundles, and observed data: `epydemix run /abs/path/to/config.yaml -o /abs/path/to/output.epx`
+- Never `cd` into a project directory and then use relative paths — the next Bash call will still be in that directory, causing double-prefix errors (e.g. `calib_demo/calib_demo/config.yaml`).
+- The `base:` field in config inheritance is resolved relative to the config file itself, regardless of the shell working directory.
 
 ## Error Handling
 
@@ -763,6 +900,44 @@ population = 10000  # from manifest
 attack_rate = final / population
 print(f"Attack rate: {attack_rate.median():.1%} "
       f"[{attack_rate.quantile(0.05):.1%}, {attack_rate.quantile(0.95):.1%}]")
+```
+
+### Example 4: Calibrate SIR to observed data
+
+```bash
+# Write calibration config
+cat > calibrate_sir.yaml << 'EOF'
+model:
+  type: SIR
+parameters:
+  recovery_rate: 0.1           # fixed
+simulation:
+  start_date: "2024-01-01"
+  end_date: "2024-03-31"
+initial_conditions:
+  Susceptible: 0.999
+  Infected: 0.001
+  Recovered: 0.0
+calibration:
+  strategy: smc
+  priors:
+    transmission_rate:
+      distribution: uniform
+      low: 0.1
+      high: 0.8
+  observed_data: weekly_cases.csv
+  observed_column: cases
+  target_variable: Infected_total
+  distance: rmse
+  num_particles: 200
+  num_generations: 5
+EOF
+# Run calibration
+epydemix calibrate calibrate_sir.yaml -o sir_calibration.epx
+# What did we learn about the transmission rate?
+epydemix inspect sir_calibration.epx posterior
+# How well does the calibrated model fit the data?
+epydemix inspect sir_calibration.epx fit -v Infected_total -q 0.05,0.5,0.95
 ```
 
 ## Installation

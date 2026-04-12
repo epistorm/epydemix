@@ -91,6 +91,53 @@ def run(config_path, output):
 
 
 # ---------------------------------------------------------------------------
+# calibrate
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.argument("config_path", type=click.Path(exists=True))
+@click.option("--output", "-o", default="calibration.epx",
+              help="Path for the output .epx bundle.")
+def calibrate(config_path, output):
+    """Run ABC calibration from a YAML/JSON config file.
+
+    The config must include a 'calibration' section with priors,
+    observed data, and strategy settings.  See AGENT.md for full
+    config reference.
+
+    Writes an .epx calibration bundle and prints the manifest to stdout.
+    """
+    from .config import (
+        load_config,
+        validate_calibration_config,
+        calibrate_from_config,
+    )
+    from ..io.bundle import save_bundle
+
+    try:
+        config = load_config(config_path)
+    except Exception as e:
+        _error_json("CONFIG_LOAD_ERROR", str(e))
+
+    validation = validate_calibration_config(config)
+    if not validation["valid"]:
+        _error_json("INVALID_CONFIG", "Calibration config validation failed.",
+                    details=validation["errors"])
+
+    for w in validation.get("warnings", []):
+        click.echo(f"Warning: {w}", err=True)
+
+    try:
+        config_dir = Path(config_path).parent
+        results, used_config = calibrate_from_config(config, config_dir=config_dir)
+        manifest = save_bundle(results, output, config=used_config)
+        click.echo(f"Calibration bundle saved to: {output}", err=True)
+        _print_json(manifest)
+    except Exception as e:
+        _error_json("RUNTIME_ERROR", str(e))
+
+
+# ---------------------------------------------------------------------------
 # validate
 # ---------------------------------------------------------------------------
 

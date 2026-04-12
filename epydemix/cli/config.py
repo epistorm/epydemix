@@ -4,7 +4,7 @@ import copy
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -293,4 +293,370 @@ def run_from_config(config: Dict[str, Any]) -> Tuple[Any, Dict]:
         initial_conditions_dict=ic,
     )
 
+    return results, config
+
+
+# ---------------------------------------------------------------------------
+# Calibration support
+# ---------------------------------------------------------------------------
+
+# Supported scipy.stats distribution constructors, keyed by YAML name.
+_DISTRIBUTION_MAP = {
+    "uniform": "uniform",
+    "normal": "norm",
+    "lognormal": "lognorm",
+    "truncnorm": "truncnorm",
+    "beta": "beta",
+    "gamma": "gamma_dist",  # avoid clash with gamma parameter name
+    "expon": "expon",
+}
+
+
+def build_prior(spec: Dict[str, Any]) -> Any:
+    """Build a scipy.stats frozen distribution from a YAML prior spec.
+
+    Supported distributions and their parameters:
+
+    - ``uniform``:   ``low``, ``high``
+    - ``normal``:    ``mean``, ``std``
+    - ``lognormal``: ``shape`` (sigma), ``scale`` (exp(mu))
+    - ``truncnorm``: ``mean``, ``std``, ``low``, ``high``
+    - ``beta``:      ``a``, ``b``
+    - ``gamma``:     ``a`` (shape), ``scale``
+    - ``expon``:     ``scale``
+
+    Returns:
+        A frozen ``scipy.stats`` distribution.
+
+    Raises:
+        ValueError: If the distribution name is unknown.
+        ImportError: If scipy is not installed.
+    """
+    try:
+        from scipy import stats
+    except ImportError:
+        raise ImportError(
+            "Calibration requires scipy. Install it with: pip install scipy"
+        )
+
+    dist_name = spec.get("distribution", "uniform")
+    if dist_name not in _DISTRIBUTION_MAP:
+        raise ValueError(
+            f"Unknown distribution '{dist_name}'. "
+            f"Supported: {list(_DISTRIBUTION_MAP.keys())}"
+        )
+
+    if dist_name == "uniform":
+        low = float(spec["low"])
+        high = float(spec["high"])
+        return stats.uniform(loc=low, scale=high - low)
+
+    elif dist_name == "normal":
+        return stats.norm(loc=float(spec["mean"]), scale=float(spec["std"]))
+
+    elif dist_name == "lognormal":
+        return stats.lognorm(s=float(spec["shape"]), scale=float(spec.get("scale", 1.0)))
+
+    elif dist_name == "truncnorm":
+        mean = float(spec["mean"])
+        std = float(spec["std"])
+        low = float(spec["low"])
+        high = float(spec["high"])
+        a = (low - mean) / std
+        b = (high - mean) / std
+        return stats.truncnorm(a=a, b=b, loc=mean, scale=std)
+
+    elif dist_name == "beta":
+        return stats.beta(a=float(spec["a"]), b=float(spec["b"]))
+
+    elif dist_name == "gamma":
+        return stats.gamma(a=float(spec["a"]), scale=float(spec.get("scale", 1.0)))
+
+    elif dist_name == "expon":
+        return stats.expon(scale=float(spec.get("scale", 1.0)))
+
+    raise ValueError(f"Unhandled distribution: {dist_name}")
+
+
+def build_priors(cal_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a dict of frozen scipy distributions from the calibration config.
+
+    Args:
+        cal_cfg: The ``calibration`` section of the config.
+
+    Returns:
+        Dict mapping parameter name → frozen scipy distribution.
+    """
+    priors_cfg = cal_cfg.get("priors", {})
+    if not priors_cfg:
+        raise ValueError("calibration.priors is required and must not be empty")
+    return {name: build_prior(spec) for name, spec in priors_cfg.items()}
+
+
+def load_observed_data(
+    cal_cfg: Dict[str, Any],
+    config_dir: Optional[Path] = None,
+) -> np.ndarray:
+    """Load observed data from the calibration config.
+
+    The ``observed_data`` field can be:
+    - A string path to a CSV file (resolved relative to *config_dir*).
+    - A list of numbers (inline data).
+
+    When a CSV file is used, ``observed_column`` selects which column to
+    extract.  If omitted and the CSV has exactly two columns, the second
+    column is used (assuming the first is a date/index).
+
+    Args:
+        cal_cfg: The ``calibration`` section of the config.
+        config_dir: Directory of the config file, for resolving relative paths.
+
+    Returns:
+        1-D numpy array of observed values.
+    """
+    import pandas as pd
+
+    obs = cal_cfg.get("observed_data")
+    if obs is None:
+        raise ValueError("calibration.observed_data is required")
+
+    if isinstance(obs, list):
+        return np.array(obs, dtype=float)
+
+    # It's a file path
+    obs_path = Path(obs)
+    if not obs_path.is_absolute() and config_dir is not None:
+        obs_path = config_dir / obs_path
+
+    if not obs_path.exists():
+        raise FileNotFoundError(f"Observed data file not found: {obs_path}")
+
+    df = pd.read_csv(obs_path)
+    col = cal_cfg.get("observed_column")
+    if col is not None:
+        if col not in df.columns:
+            raise ValueError(
+                f"Column '{col}' not found in {obs_path}. "
+                f"Available: {list(df.columns)}"
+            )
+        return df[col].values.astype(float)
+
+    # Auto-select: if two columns, take the second; else take the last
+    if len(df.columns) == 2:
+        return df.iloc[:, 1].values.astype(float)
+    return df.iloc[:, -1].values.astype(float)
+
+
+def _make_simulation_function(
+    config: Dict[str, Any],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Create a simulation function suitable for ABCSampler.
+
+    The returned callable takes a parameter dict and returns
+    ``{"data": 1D_array}`` — the format expected by epydemix distance
+    functions.
+
+    The target variable (which compartment/column to extract) is read
+    from ``calibration.target_variable`` and defaults to the first
+    ``_total`` column that starts with ``I`` (infected).
+    """
+    from ..model.epimodel import simulate
+
+    model = build_model_from_config(config)
+    sim_cfg = config.get("simulation", {})
+    ic = build_initial_conditions(config, model)
+    target = config.get("calibration", {}).get("target_variable")
+
+    def sim_fn(params: Dict[str, Any]) -> Dict[str, Any]:
+        # Update model parameters with sampled values
+        for name, value in params.items():
+            model.parameters[name] = value
+
+        results = simulate(
+            epimodel=model,
+            start_date=sim_cfg["start_date"],
+            end_date=sim_cfg["end_date"],
+            dt=sim_cfg.get("dt", 1.0),
+            initial_conditions_dict=ic,
+        )
+
+        # Extract target variable
+        var = target
+        if var is None:
+            # Auto-detect: first I-like _total column
+            for key in results.compartments:
+                if key.endswith("_total") and key.split("_")[0].startswith("I"):
+                    var = key
+                    break
+            if var is None:
+                # Fall back to first _total
+                for key in results.compartments:
+                    if key.endswith("_total"):
+                        var = key
+                        break
+
+        if var is None or var not in results.compartments:
+            raise ValueError(
+                f"Cannot find target variable '{var}' in simulation output. "
+                f"Available: {list(results.compartments.keys())}"
+            )
+
+        return {"data": results.compartments[var]}
+
+    return sim_fn
+
+
+def _resolve_distance_function(name: str) -> Callable:
+    """Look up a distance function by name from epydemix.calibration.metrics."""
+    from ..calibration import metrics as m
+
+    available = {
+        "rmse": m.rmse,
+        "mae": m.mae,
+        "wmape": m.wmape,
+        "mape": m.mape,
+        "ae": m.ae,
+    }
+    if name not in available:
+        raise ValueError(
+            f"Unknown distance function '{name}'. "
+            f"Available: {list(available.keys())}"
+        )
+    return available[name]
+
+
+def validate_calibration_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate a calibration config.  Returns ``{valid, errors, warnings}``."""
+    errors = []
+    warnings = []
+
+    # Must have calibration section
+    cal = config.get("calibration")
+    if not cal:
+        errors.append("Missing required section: 'calibration'")
+        return {"valid": False, "errors": errors, "warnings": warnings}
+
+    # Check priors
+    priors = cal.get("priors")
+    if not priors:
+        errors.append("calibration.priors is required and must not be empty")
+    else:
+        for name, spec in priors.items():
+            if "distribution" not in spec:
+                warnings.append(
+                    f"Prior '{name}' has no 'distribution'; defaults to uniform"
+                )
+            dist = spec.get("distribution", "uniform")
+            if dist not in _DISTRIBUTION_MAP:
+                errors.append(
+                    f"Prior '{name}': unknown distribution '{dist}'. "
+                    f"Supported: {list(_DISTRIBUTION_MAP.keys())}"
+                )
+
+    # Check observed data
+    if "observed_data" not in cal:
+        errors.append("calibration.observed_data is required")
+
+    # Check strategy
+    strategy = cal.get("strategy", "smc")
+    if strategy not in ("smc", "rejection", "top_fraction"):
+        errors.append(
+            f"calibration.strategy '{strategy}' is not valid. "
+            f"Must be one of: smc, rejection, top_fraction"
+        )
+
+    # Check distance
+    dist = cal.get("distance", "rmse")
+    valid_distances = ("rmse", "mae", "wmape", "mape", "ae")
+    if dist not in valid_distances:
+        errors.append(
+            f"calibration.distance '{dist}' is not valid. "
+            f"Must be one of: {list(valid_distances)}"
+        )
+
+    # Also run base simulation config validation
+    base_result = validate_config(config)
+    errors.extend(base_result["errors"])
+    warnings.extend(base_result["warnings"])
+
+    return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
+
+
+def calibrate_from_config(
+    config: Dict[str, Any],
+    config_dir: Optional[Path] = None,
+) -> Tuple[Any, Dict]:
+    """Build and run a calibration from a config dict.
+
+    Args:
+        config: Fully resolved config dictionary.
+        config_dir: Directory of the config file (for resolving relative
+            paths to observed data files).
+
+    Returns:
+        Tuple of (CalibrationResults, config_dict).
+    """
+    from ..calibration.abc import ABCSampler
+
+    cal_cfg = config.get("calibration", {})
+
+    # Build components
+    priors = build_priors(cal_cfg)
+    observed = load_observed_data(cal_cfg, config_dir=config_dir)
+    sim_fn = _make_simulation_function(config)
+    distance_fn = _resolve_distance_function(cal_cfg.get("distance", "rmse"))
+
+    # Fixed parameters = parameters section minus any that appear in priors
+    fixed_params = {
+        k: v for k, v in config.get("parameters", {}).items()
+        if k not in priors
+    }
+
+    sampler = ABCSampler(
+        simulation_function=sim_fn,
+        priors=priors,
+        parameters=fixed_params,
+        observed_data=observed,
+        distance_function=distance_fn,
+    )
+
+    # Extract strategy-specific kwargs
+    strategy = cal_cfg.get("strategy", "smc")
+    strategy_kwargs = {"verbose": False}  # suppress stdout from ABC
+
+    if strategy == "smc":
+        if "num_particles" in cal_cfg:
+            strategy_kwargs["num_particles"] = int(cal_cfg["num_particles"])
+        if "num_generations" in cal_cfg:
+            strategy_kwargs["num_generations"] = int(cal_cfg["num_generations"])
+        if "epsilon_quantile_level" in cal_cfg:
+            strategy_kwargs["epsilon_quantile_level"] = float(
+                cal_cfg["epsilon_quantile_level"]
+            )
+        if "minimum_epsilon" in cal_cfg:
+            strategy_kwargs["minimum_epsilon"] = float(cal_cfg["minimum_epsilon"])
+        if "total_simulations_budget" in cal_cfg:
+            strategy_kwargs["total_simulations_budget"] = int(
+                cal_cfg["total_simulations_budget"]
+            )
+
+    elif strategy == "rejection":
+        if "epsilon" in cal_cfg:
+            strategy_kwargs["epsilon"] = float(cal_cfg["epsilon"])
+        if "num_particles" in cal_cfg:
+            strategy_kwargs["num_particles"] = int(cal_cfg["num_particles"])
+        if "total_simulations_budget" in cal_cfg:
+            strategy_kwargs["total_simulations_budget"] = int(
+                cal_cfg["total_simulations_budget"]
+            )
+
+    elif strategy == "top_fraction":
+        if "top_fraction" in cal_cfg:
+            strategy_kwargs["top_fraction"] = float(cal_cfg["top_fraction"])
+        if "Nsim" in cal_cfg:
+            strategy_kwargs["Nsim"] = int(cal_cfg["Nsim"])
+        elif "n_simulations" in cal_cfg:
+            strategy_kwargs["Nsim"] = int(cal_cfg["n_simulations"])
+
+    results = sampler.calibrate(strategy=strategy, **strategy_kwargs)
     return results, config
