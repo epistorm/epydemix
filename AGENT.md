@@ -774,6 +774,88 @@ epydemix inspect calibration.epx fit -v Infected_total -q 0.05,0.5,0.95
 
 Config inheritance works with calibration configs: write a base simulation config, then an overlay that adds only the `calibration` section. This keeps the model definition and the calibration setup separate and reusable.
 
+## Projections from Calibration Posteriors
+
+### What projections do
+
+After calibrating a model, you often want to run forward scenarios using the estimated parameters — for example, extending the simulation period, adding interventions, or exploring "what if" questions while respecting the calibrated uncertainty. The `project` command samples parameter sets from the calibration posterior (weighted by particle importance), runs forward simulations, and saves results as a standard simulation bundle that works with all existing `inspect` and `compare` commands.
+
+### Running a projection
+
+The simplest form replays the calibration over the same period, sampling from the posterior:
+
+```bash
+epydemix project calibration.epx -o projection.epx
+```
+
+This uses the calibration bundle's stored config and samples 200 simulations (default) from the last-generation posterior.
+
+### Projection config overlay
+
+To change the simulation period, add interventions, or override parameters, write a projection overlay. **The calibration bundle's stored config is the automatic base — do not add a `base:` key.** Only specify what changes:
+
+```yaml
+# projection.yaml  — only the deltas from the calibration config
+simulation:
+  end_date: "2025-06-30"                # extend beyond calibration period
+
+overrides:                               # hypothetical intervention
+  - parameter: transmission_rate
+    start_date: "2025-03-01"
+    end_date: "2025-06-30"
+    value: 0.15
+
+projection:
+  n_simulations: 200                     # how many posterior samples (default: 200)
+  generation: -1                         # which posterior generation (-1 = last)
+```
+
+Then run:
+
+```bash
+epydemix project calibration.epx --config projection.yaml -o projection.epx
+```
+
+### Projection config reference
+
+The `projection` section is optional. When omitted, defaults are used:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `n_simulations` | int | 200 | Number of posterior samples to simulate |
+| `generation` | int | -1 | Posterior generation to sample from (-1 = last) |
+
+All other config sections (`model`, `simulation`, `parameters`, `initial_conditions`, `overrides`, `interventions`) follow the same format as simulation configs and can be overridden via config inheritance.
+
+### Projection output
+
+The output is a standard simulation bundle (type `SimulationResults`), which means all existing inspection commands work:
+
+```bash
+# Quantiles of projected epidemic curve
+epydemix inspect projection.epx quantiles -v Infected_total -q 0.05,0.5,0.95
+# Peak timing
+epydemix inspect projection.epx peak -v Infected_total
+# Summary statistics
+epydemix inspect projection.epx summary -v Infected_total
+# Compare projection scenarios
+epydemix compare baseline_proj.epx intervention_proj.epx
+```
+
+### Projection workflow
+
+```bash
+# 1. Run calibration first (if not already done)
+epydemix calibrate cal_config.yaml -o calibration.epx
+# 2. Write projection overlay (or skip for same-period replay)
+# 3. Run projection
+epydemix project calibration.epx --config projection.yaml -o projection.epx
+# 4. Inspect results
+epydemix inspect projection.epx quantiles -v Infected_total -q 0.05,0.5,0.95
+# 5. Compare multiple projection scenarios
+epydemix compare baseline_proj.epx intervention_proj.epx -n Baseline,Intervention
+```
+
 ## Shell and Path Conventions
 
 **Always use absolute paths with the CLI.** The working directory persists across Bash tool calls (a `cd` in one call affects subsequent calls), but the CLI resolves relative config paths from the current working directory. To avoid confusion:
@@ -938,6 +1020,28 @@ epydemix calibrate calibrate_sir.yaml -o sir_calibration.epx
 epydemix inspect sir_calibration.epx posterior
 # How well does the calibrated model fit the data?
 epydemix inspect sir_calibration.epx fit -v Infected_total -q 0.05,0.5,0.95
+```
+
+### Example 5: Project from calibration posterior
+
+```bash
+# After calibrating (Example 4), project forward with an intervention.
+# No ``base:`` needed — the calibration bundle's config is the automatic base.
+cat > projection.yaml << 'EOF'
+simulation:
+  end_date: "2024-06-30"                # extend 3 months beyond calibration
+overrides:
+  - parameter: transmission_rate
+    start_date: "2024-04-01"
+    end_date: "2024-06-30"
+    value: 0.15                          # hypothetical intervention
+projection:
+  n_simulations: 200
+EOF
+epydemix project sir_calibration.epx --config projection.yaml -o sir_projection.epx
+# Inspect the projection
+epydemix inspect sir_projection.epx quantiles -v Infected_total -q 0.05,0.5,0.95
+epydemix inspect sir_projection.epx peak -v Infected_total
 ```
 
 ## Installation

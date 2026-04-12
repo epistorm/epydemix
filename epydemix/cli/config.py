@@ -660,3 +660,154 @@ def calibrate_from_config(
 
     results = sampler.calibrate(strategy=strategy, **strategy_kwargs)
     return results, config
+
+
+# ---------------------------------------------------------------------------
+# Projection support
+# ---------------------------------------------------------------------------
+
+
+def validate_projection_config(
+    config: Dict[str, Any],
+    calibration_bundle: str,
+) -> Dict[str, Any]:
+    """Validate a projection config.  Returns ``{valid, errors, warnings}``.
+
+    Args:
+        config: Fully resolved projection config dict.
+        calibration_bundle: Path to the calibration .epx bundle.
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    bundle_path = Path(calibration_bundle)
+    if not bundle_path.exists():
+        errors.append(f"Calibration bundle not found: {calibration_bundle}")
+    elif not (bundle_path / "manifest.json").exists():
+        errors.append(f"No manifest.json in bundle: {calibration_bundle}")
+    elif not (bundle_path / "posterior.parquet").exists():
+        errors.append(
+            f"No posterior.parquet in bundle — is this a calibration bundle?"
+        )
+
+    # Must have simulation section (inherited or explicit)
+    if "simulation" not in config:
+        errors.append("Missing required section: 'simulation'")
+    else:
+        sim = config["simulation"]
+        if "start_date" not in sim:
+            errors.append("simulation.start_date is required")
+        if "end_date" not in sim:
+            errors.append("simulation.end_date is required")
+
+    # Must have model section
+    if "model" not in config:
+        errors.append("Missing required section: 'model'")
+
+    # Projection-specific settings
+    proj = config.get("projection", {})
+    n_sim = proj.get("n_simulations", 200)
+    if not isinstance(n_sim, int) or n_sim < 1:
+        errors.append("projection.n_simulations must be a positive integer")
+
+    gen = proj.get("generation", -1)
+    if not isinstance(gen, int):
+        errors.append("projection.generation must be an integer")
+
+    return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
+
+
+def project_from_config(
+    config: Dict[str, Any],
+    calibration_bundle: str,
+) -> Tuple[Any, Dict]:
+    """Run forward projections by sampling parameters from a calibration posterior.
+
+    Reads the posterior (and optional weights) from a saved calibration bundle,
+    samples parameter rows, and runs forward simulations with the (possibly
+    overridden) config.
+
+    Args:
+        config: Fully resolved config dict — typically the calibration bundle's
+            stored config deep-merged with a projection overlay that changes
+            dates, adds interventions/overrides, etc.
+        calibration_bundle: Path to the calibration .epx bundle.
+
+    Returns:
+        Tuple of (SimulationResults, config_dict).
+    """
+    import pandas as pd
+
+    from ..io.bundle import load_bundle_dataframe
+    from ..model.epimodel import simulate
+
+    bundle_path = Path(calibration_bundle)
+
+    # --- load posterior ---------------------------------------------------
+    posterior_df = pd.read_parquet(bundle_path / "posterior.parquet")
+
+    # Determine which generation to use
+    proj_cfg = config.get("projection", {})
+    gen_req = proj_cfg.get("generation", -1)
+
+    if "generation" in posterior_df.columns:
+        available_gens = sorted(posterior_df["generation"].unique())
+        if gen_req == -1:
+            gen = max(available_gens)
+        else:
+            gen = gen_req
+        posterior_df = posterior_df[posterior_df["generation"] == gen].drop(
+            columns=["generation"]
+        )
+    # else: no generation column (single-generation result); use as-is
+
+    param_names = list(posterior_df.columns)
+
+    # --- load weights (optional) ------------------------------------------
+    weights_path = bundle_path / "weights.parquet"
+    if weights_path.exists():
+        weights_df = pd.read_parquet(weights_path)
+        if "generation" in weights_df.columns:
+            weights_df = weights_df[weights_df["generation"] == gen]
+        w = weights_df["weight"].values.astype(float)
+        w = w / w.sum()
+    else:
+        # Uniform weights (old bundles without weights.parquet)
+        w = np.ones(len(posterior_df)) / len(posterior_df)
+
+    # --- build model and simulation params --------------------------------
+    model = build_model_from_config(config)
+    sim_cfg = config.get("simulation", {})
+    ic = build_initial_conditions(config, model)
+    n_simulations = proj_cfg.get("n_simulations", 200)
+
+    # --- sample and simulate ----------------------------------------------
+    from ..model.simulation_results import SimulationResults
+
+    all_trajectories = []
+    posterior_arr = posterior_df.values  # (n_particles, n_params)
+
+    for _ in range(n_simulations):
+        idx = np.random.choice(len(posterior_arr), p=w)
+        sampled_params = dict(zip(param_names, posterior_arr[idx]))
+
+        # Update model parameters
+        for name, value in sampled_params.items():
+            model.parameters[name] = value
+
+        traj = simulate(
+            epimodel=model,
+            start_date=sim_cfg["start_date"],
+            end_date=sim_cfg["end_date"],
+            dt=sim_cfg.get("dt", 1.0),
+            initial_conditions_dict=ic,
+        )
+        all_trajectories.append(traj)
+
+    # Assemble SimulationResults
+    results = SimulationResults(
+        trajectories=all_trajectories,
+        parameters=config.get("parameters", {}),
+    )
+
+    return results, config

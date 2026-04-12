@@ -206,6 +206,18 @@ def _save_calibration_bundle(
             traj_df.to_parquet(traj_path, index=False, engine="pyarrow")
             file_sizes["trajectories"] = os.path.getsize(traj_path) / (1024 * 1024)
 
+    # Save particle weights (needed for posterior-weighted projection sampling)
+    weight_rows = []
+    for gen, w in results.weights.items():
+        w_arr = np.asarray(w, dtype=float)
+        for i, wt in enumerate(w_arr):
+            weight_rows.append({"generation": gen, "particle_id": i, "weight": wt})
+    if weight_rows:
+        weight_df = pd.DataFrame(weight_rows)
+        weight_path = path / "weights.parquet"
+        weight_df.to_parquet(weight_path, index=False, engine="pyarrow")
+        file_sizes["weights"] = os.path.getsize(weight_path) / (1024 * 1024)
+
     # Save observed data used for calibration so the fit command can compare it
     # against the accepted trajectories.
     if results.observed_data is not None:

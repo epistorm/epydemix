@@ -209,6 +209,16 @@ def build_calibration_manifest(
                 "path": "distances.parquet",
                 "description": "Distance values per generation.",
             },
+            "weights": {
+                "path": "weights.parquet",
+                "description": "Particle weights per generation "
+                               "(used for posterior-weighted sampling in projections).",
+                "columns": {
+                    "generation": {"dtype": "int32"},
+                    "particle_id": {"dtype": "int32"},
+                    "weight": {"dtype": "float64"},
+                },
+            },
             "trajectories": {
                 "path": "trajectories.parquet",
                 "description": "Accepted simulated trajectories (last generation). "

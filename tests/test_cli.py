@@ -803,6 +803,149 @@ class TestCalibrateCLI:
         assert result.exit_code == 0
 
 
+# ---------------------------------------------------------------------------
+# Projection config & CLI
+# ---------------------------------------------------------------------------
+
+def _run_calibration(tmp_path, name="cal.epx"):
+    """Run a quick calibration and return the bundle path."""
+    cfg = _calibration_config()
+    config_path = _write_yaml(tmp_path, cfg, "cal_for_proj.yaml")
+    bundle_path = str(tmp_path / name)
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        "calibrate", config_path, "-o", bundle_path,
+    ])
+    assert result.exit_code == 0, f"Calibration failed: {result.output}"
+    return bundle_path
+
+
+class TestProjectionConfig:
+    """Tests for projection config validation."""
+
+    def test_validate_projection_config_valid(self, tmp_path):
+        from epydemix.cli.config import validate_projection_config
+        bundle = _run_calibration(tmp_path)
+        cfg = {
+            "model": {"type": "SIR"},
+            "simulation": {
+                "start_date": "2023-01-01",
+                "end_date": "2023-02-28",
+            },
+            "parameters": {
+                "transmission_rate": 0.3,
+                "recovery_rate": 0.1,
+            },
+            "projection": {"n_simulations": 10},
+        }
+        result = validate_projection_config(cfg, bundle)
+        assert result["valid"] is True
+
+    def test_validate_projection_config_missing_bundle(self):
+        from epydemix.cli.config import validate_projection_config
+        cfg = {
+            "model": {"type": "SIR"},
+            "simulation": {
+                "start_date": "2023-01-01",
+                "end_date": "2023-02-28",
+            },
+        }
+        result = validate_projection_config(cfg, "/nonexistent/bundle.epx")
+        assert result["valid"] is False
+        assert any("not found" in e for e in result["errors"])
+
+    def test_validate_projection_config_missing_simulation(self, tmp_path):
+        from epydemix.cli.config import validate_projection_config
+        bundle = _run_calibration(tmp_path)
+        cfg = {"model": {"type": "SIR"}}
+        result = validate_projection_config(cfg, bundle)
+        assert result["valid"] is False
+        assert any("simulation" in e for e in result["errors"])
+
+
+class TestProjectCLI:
+    """Tests for the `epydemix project` CLI command."""
+
+    def test_project_no_overlay(self, tmp_path):
+        """Project using the calibration bundle's own config (no overlay)."""
+        bundle = _run_calibration(tmp_path)
+        proj_out = str(tmp_path / "proj.epx")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "project", bundle, "-o", proj_out,
+        ])
+        assert result.exit_code == 0, f"Project failed: {result.output}"
+
+        # Should produce a simulation bundle
+        assert os.path.isdir(proj_out)
+        assert os.path.exists(os.path.join(proj_out, "manifest.json"))
+        assert os.path.exists(os.path.join(proj_out, "compartments.parquet"))
+
+        # Manifest should be SimulationResults type
+        raw = result.output
+        if "{" in raw:
+            data = json.loads(raw[raw.index("{"):])
+            assert data.get("type") == "SimulationResults"
+
+    def test_project_with_overlay(self, tmp_path):
+        """Project with a config overlay that extends the simulation period."""
+        bundle = _run_calibration(tmp_path)
+
+        # Write overlay config inheriting from the calibration bundle's config
+        import yaml
+        overlay_cfg = {
+            "base": os.path.join(bundle, "config.yaml"),
+            "simulation": {
+                "end_date": "2023-02-28",
+            },
+            "projection": {
+                "n_simulations": 5,
+            },
+        }
+        overlay_path = _write_yaml(tmp_path, overlay_cfg, "proj_overlay.yaml")
+        proj_out = str(tmp_path / "proj_overlay.epx")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "project", bundle, "-c", overlay_path, "-o", proj_out,
+        ])
+        assert result.exit_code == 0, f"Project failed: {result.output}"
+        assert os.path.isdir(proj_out)
+
+    def test_project_inspect_results(self, tmp_path):
+        """Project results can be inspected with standard inspect commands."""
+        bundle = _run_calibration(tmp_path)
+        proj_out = str(tmp_path / "proj_insp.epx")
+
+        runner = CliRunner()
+        runner.invoke(cli, ["project", bundle, "-o", proj_out])
+
+        # Inspect quantiles on the projection bundle
+        result = runner.invoke(cli, [
+            "inspect", proj_out, "quantiles",
+            "-v", "Infected_total",
+            "-q", "0.05,0.5,0.95",
+        ])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "dates" in data
+        assert "Infected_total" in data
+
+    def test_project_weights_saved(self, tmp_path):
+        """Calibration bundles now include weights.parquet."""
+        bundle = _run_calibration(tmp_path)
+        assert os.path.exists(os.path.join(bundle, "weights.parquet"))
+
+    def test_project_invalid_bundle(self, tmp_path):
+        """Project with a non-bundle directory should fail."""
+        fake_bundle = str(tmp_path / "fake.epx")
+        os.makedirs(fake_bundle)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["project", fake_bundle])
+        assert result.exit_code != 0
+
+
 class TestCLIPopulations:
     def test_populations_command(self):
         runner = CliRunner()

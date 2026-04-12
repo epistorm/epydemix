@@ -138,6 +138,113 @@ def calibrate(config_path, output):
 
 
 # ---------------------------------------------------------------------------
+# project
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.argument("calibration_bundle", type=click.Path(exists=True))
+@click.option("--config", "-c", "config_path", default=None,
+              type=click.Path(exists=True),
+              help="Projection overlay config (inherits from calibration bundle's config).")
+@click.option("--output", "-o", default="projection.epx",
+              help="Path for the output .epx bundle.")
+def project(calibration_bundle, config_path, output):
+    """Run forward projections from a calibration posterior.
+
+    Samples parameter sets from the calibration posterior (weighted),
+    runs forward simulations with the (possibly overridden) config,
+    and saves results as a standard simulation bundle.
+
+    \b
+    The calibration bundle's stored config is always the implicit base.
+    A projection overlay only needs to specify what changes — no ``base:``
+    key is required:
+
+    \b
+      simulation:
+        end_date: "2025-06-30"    # extend beyond calibration period
+      overrides:
+        - parameter: transmission_rate
+          start_date: "2025-04-01"
+          end_date: "2025-06-30"
+          value: 0.15
+      projection:
+        n_simulations: 200
+
+    If --config is omitted, the calibration bundle's own config is used
+    (i.e. replay with posterior samples over the same period).
+
+    \b
+    Examples:
+      epydemix project calibration.epx -o projection.epx
+      epydemix project calibration.epx -c projection.yaml -o projection.epx
+    """
+    from .config import (
+        load_config,
+        validate_projection_config,
+        project_from_config,
+    )
+    from ..io.bundle import save_bundle
+
+    # Build the effective config
+    try:
+        import yaml
+        from pathlib import Path
+
+        from .config import _deep_merge
+
+        bundle_p = Path(calibration_bundle)
+        cfg_yaml = bundle_p / "config.yaml"
+        cfg_json = bundle_p / "config.json"
+        if cfg_yaml.exists():
+            with open(cfg_yaml) as f:
+                bundle_config = yaml.safe_load(f) or {}
+        elif cfg_json.exists():
+            with open(cfg_json) as f:
+                bundle_config = json.load(f)
+        else:
+            _error_json(
+                "CONFIG_LOAD_ERROR",
+                "No config.yaml or config.json found in calibration bundle.",
+            )
+            return  # unreachable, _error_json exits
+
+        # Strip the calibration section — not applicable to projections.
+        bundle_config.pop("calibration", None)
+
+        if config_path is not None:
+            # The overlay only needs to specify what changes (end_date,
+            # overrides, projection settings, …).  The calibration bundle's
+            # config is used as the implicit base, so ``base:`` in the overlay
+            # is not required.  If the overlay does carry a ``base:`` key it is
+            # still resolved normally — the bundle config is simply merged on
+            # top of whatever that chain produces.
+            overlay = load_config(config_path)
+            config = _deep_merge(bundle_config, overlay)
+        else:
+            # No overlay — replay calibration period with posterior samples.
+            config = bundle_config
+    except Exception as e:
+        _error_json("CONFIG_LOAD_ERROR", str(e))
+
+    validation = validate_projection_config(config, calibration_bundle)
+    if not validation["valid"]:
+        _error_json("INVALID_CONFIG", "Projection config validation failed.",
+                    details=validation["errors"])
+
+    for w in validation.get("warnings", []):
+        click.echo(f"Warning: {w}", err=True)
+
+    try:
+        results, used_config = project_from_config(config, calibration_bundle)
+        manifest = save_bundle(results, output, config=used_config)
+        click.echo(f"Projection bundle saved to: {output}", err=True)
+        _print_json(manifest)
+    except Exception as e:
+        _error_json("RUNTIME_ERROR", str(e))
+
+
+# ---------------------------------------------------------------------------
 # validate
 # ---------------------------------------------------------------------------
 
