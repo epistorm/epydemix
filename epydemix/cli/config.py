@@ -210,7 +210,7 @@ def build_model_from_config(config: Dict[str, Any]) -> EpiModel:
     if "name" in pop_cfg and pop_cfg["name"] != "default":
         model.import_epydemix_population(
             population_name=pop_cfg["name"],
-            layers=pop_cfg.get("contact_layers"),
+            contact_layers=pop_cfg.get("contact_layers"),
         )
 
     # Override parameters (if different from what predefined model set)
