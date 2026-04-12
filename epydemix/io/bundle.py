@@ -27,6 +27,7 @@ def save_bundle(
     results,
     path: str,
     config: Optional[Dict] = None,
+    provenance: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Save simulation or calibration results as an .epx bundle.
 
@@ -36,6 +37,9 @@ def save_bundle(
         results: A SimulationResults or CalibrationResults object.
         path: Path for the bundle directory (e.g. ``"results.epx"``).
         config: Optional config dict to include for reproducibility.
+        provenance: Optional lineage dict to embed in the manifest.
+            Typical keys: ``command``, ``config_path``, ``parent_bundle``,
+            ``args``.
 
     Returns:
         The manifest dictionary.
@@ -54,9 +58,9 @@ def save_bundle(
     path.mkdir(parents=True, exist_ok=True)
 
     if isinstance(results, SimulationResults):
-        return _save_simulation_bundle(results, path, config)
+        return _save_simulation_bundle(results, path, config, provenance)
     elif isinstance(results, CalibrationResults):
-        return _save_calibration_bundle(results, path, config)
+        return _save_calibration_bundle(results, path, config, provenance)
     else:
         raise TypeError(
             f"Expected SimulationResults or CalibrationResults, got {type(results)}"
@@ -67,6 +71,7 @@ def _save_simulation_bundle(
     results,
     path: Path,
     config: Optional[Dict],
+    provenance: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Write simulation results to an .epx bundle."""
     file_sizes = {}
@@ -138,6 +143,8 @@ def _save_simulation_bundle(
         results, str(path), config=config, file_sizes=file_sizes
     )
     manifest["figures"] = {}
+    if provenance:
+        manifest["provenance"] = provenance
     manifest_path = path / "manifest.json"
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2, cls=NumpySafeEncoder)
@@ -149,6 +156,7 @@ def _save_calibration_bundle(
     results,
     path: Path,
     config: Optional[Dict],
+    provenance: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Write calibration results to an .epx bundle."""
     file_sizes = {}
@@ -261,6 +269,8 @@ def _save_calibration_bundle(
         results, str(path), config=config, file_sizes=file_sizes
     )
     manifest["figures"] = {}
+    if provenance:
+        manifest["provenance"] = provenance
     with open(path / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2, cls=NumpySafeEncoder)
 

@@ -201,8 +201,33 @@ The `manifest.json` is the bridge between the opaque Parquet files and the agent
 - `parameters_used`: scalar parameter values
 - `files`: for each Parquet file, the full column schema with dtypes and descriptions
 - `usage_hints`: instructions for CLI inspection and custom Python access
+- `provenance`: lineage information recording how the bundle was produced
 
 **The `files` section is your schema reference.** Use it to write correct `pd.read_parquet()` calls when the canned inspect commands are insufficient.
+
+### Provenance
+
+Every bundle produced by the CLI includes a `provenance` key in the manifest that records the operation that created it:
+
+```json
+{
+  "provenance": {
+    "command": "project",
+    "parent_bundle": "/abs/path/to/calibration.epx",
+    "config_path": "/abs/path/to/projection.yaml"
+  }
+}
+```
+
+Fields vary by command:
+
+| Field | Present in | Description |
+|-------|-----------|-------------|
+| `command` | all | The CLI command that created this bundle (`run`, `calibrate`, `project`) |
+| `config_path` | all | Absolute path to the config file used |
+| `parent_bundle` | `project` only | Absolute path to the calibration bundle the projection sampled from |
+
+Use provenance to trace the dependency chain: a projection bundle points back to its calibration bundle, and both point to their config files. This makes it possible to reconstruct the full lineage of any result.
 
 ### Reading Parquet with custom Python
 

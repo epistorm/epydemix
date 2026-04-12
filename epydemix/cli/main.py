@@ -83,7 +83,11 @@ def run(config_path, output):
 
     try:
         results, used_config = run_from_config(config)
-        manifest = save_bundle(results, output, config=used_config)
+        prov = {
+            "command": "run",
+            "config_path": str(Path(config_path).resolve()),
+        }
+        manifest = save_bundle(results, output, config=used_config, provenance=prov)
         click.echo(f"Bundle saved to: {output}", err=True)
         _print_json(manifest)
     except Exception as e:
@@ -130,7 +134,11 @@ def calibrate(config_path, output):
     try:
         config_dir = Path(config_path).parent
         results, used_config = calibrate_from_config(config, config_dir=config_dir)
-        manifest = save_bundle(results, output, config=used_config)
+        prov = {
+            "command": "calibrate",
+            "config_path": str(Path(config_path).resolve()),
+        }
+        manifest = save_bundle(results, output, config=used_config, provenance=prov)
         click.echo(f"Calibration bundle saved to: {output}", err=True)
         _print_json(manifest)
     except Exception as e:
@@ -237,7 +245,13 @@ def project(calibration_bundle, config_path, output):
 
     try:
         results, used_config = project_from_config(config, calibration_bundle)
-        manifest = save_bundle(results, output, config=used_config)
+        prov = {
+            "command": "project",
+            "parent_bundle": str(Path(calibration_bundle).resolve()),
+        }
+        if config_path is not None:
+            prov["config_path"] = str(Path(config_path).resolve())
+        manifest = save_bundle(results, output, config=used_config, provenance=prov)
         click.echo(f"Projection bundle saved to: {output}", err=True)
         _print_json(manifest)
     except Exception as e:
