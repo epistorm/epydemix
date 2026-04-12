@@ -356,7 +356,9 @@ def inspect_cmd(bundle_path, command, variables, quantiles, start, end,
         _error_json("INSPECT_ERROR", str(e))
 
     if output_format == "json":
-        _print_json(result, precision=precision)
+        # manifest returns raw JSON — skip rounding to preserve exact parameter values
+        effective_precision = None if command == "manifest" else precision
+        _print_json(result, precision=effective_precision)
     elif output_format in ("csv", "tsv"):
         _print_tabular(result, output_format)
 

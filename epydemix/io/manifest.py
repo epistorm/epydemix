@@ -84,10 +84,10 @@ def build_simulation_manifest(
     demo_groups = []
     if base_compartments:
         prefix = base_compartments[0] + "_"
-        demo_groups = sorted(
+        demo_groups = [
             name[len(prefix):] for name in comp_names
             if name.startswith(prefix) and not name.endswith("_total")
-        )
+        ]
 
     manifest = {
         "type": "SimulationResults",

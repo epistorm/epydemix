@@ -186,26 +186,30 @@ Running `epydemix run` produces a `.epx` directory:
 ```
 results.epx/
   manifest.json         # metadata + full Parquet schemas (see below)
-  compartments.parquet  # (sim_id, date, S_total, I_total, ..., S_0, S_1, ...)
-  transitions.parquet   # (sim_id, date, S_to_I_total, ..., S_to_I_0, ...)
-  parameters.parquet    # (sim_id, param1, param2, ...)
+  compartments.parquet  # (sim_id, date, S_total, I_total, ..., S_0-4, S_5-19, ...)
+  transitions.parquet   # (sim_id, date, S_to_I_total, ..., S_to_I_0-4, ...)
+  parameters.parquet    # (sim_id) — only populated for calibration runs; empty for plain run
 ```
 
 Column naming convention: `{Compartment}_{group}` for age-group-specific columns, `{Compartment}_total` for the sum across all groups. Transition columns follow the same pattern: `{Source}_to_{Target}_{group}` and `{Source}_to_{Target}_total`.
+
+**Note:** `parameters.parquet` contains only `sim_id` for plain `run` and `project` commands (parameters are fixed, not varied). It is populated with sampled parameter values only for `calibrate` runs.
 
 ### Manifest
 
 The `manifest.json` is the bridge between the opaque Parquet files and the agent. It contains:
 
-- `model`: compartments, transitions
-- `population`: name, size, demographic groups
-- `simulation`: n_simulations, start/end dates, timesteps
-- `parameters_used`: scalar parameter values
+- `model`: compartments (alphabetically sorted list)
+- `population`: `demographic_groups` — ordered list of group names matching Parquet column order
+- `simulation`: n_simulations, start/end dates, n_timesteps
+- `parameters_used`: scalar parameter values (exact, unrounded — read from `manifest.json` directly if you need full precision; `epydemix inspect manifest` applies `--round 2` by default which can truncate small values like `0.006 → 0.01`)
 - `files`: for each Parquet file, the full column schema with dtypes and descriptions
 - `usage_hints`: instructions for CLI inspection and custom Python access
 - `provenance`: lineage information recording how the bundle was produced
 
 **The `files` section is your schema reference.** Use it to write correct `pd.read_parquet()` calls when the canned inspect commands are insufficient.
+
+**Getting population size:** the manifest does not include a `size` or `name` field. Derive total population size from the Parquet data: `comp_df.groupby("date")[["S_total","I_total",...]].sum(axis=1).iloc[0]`, or sum across all `_total` compartment columns on any single row.
 
 ### Provenance
 
@@ -244,6 +248,24 @@ df = pd.read_parquet("results.epx/compartments.parquet",
 df = pd.read_parquet("results.epx/compartments.parquet",
                      filters=[("sim_id", "<", 10)])
 ```
+
+### Population Python API
+
+When writing analysis scripts that load population data directly (outside the CLI), use:
+
+```python
+from epydemix.population import load_epydemix_population
+
+pop = load_epydemix_population("United_States_Utah")
+
+pop.Nk_names   # np.ndarray of group name strings, e.g. ['0-4', '5-19', '20-49', '50-64', '65+']
+               # This is the authoritative group order — matches Parquet column order
+pop.Nk         # np.ndarray of group population sizes (same order as Nk_names)
+pop.num_groups # int — number of demographic groups
+pop.total_population  # int — sum of Nk
+```
+
+**Do not use `population.age_groups`, `population.demographic_groups`, or `population.size`** — these attributes do not exist. The manifest's `population.demographic_groups` list gives the same names and order as `Nk_names`.
 
 ## Inspecting Results
 
@@ -366,7 +388,7 @@ The `params` field can be a parameter expression:
 ```
 
 `schedule` accepts:
-- A **CSV file path** (resolved relative to the config file). The first column must be a date index; the remaining columns are daily doses per demographic group, in the same order as the model's population groups. Missing dates are filled with zero.
+- A **CSV file path** (resolved relative to the config file). The first column must be a date index; the remaining columns are daily doses per demographic group. **If the column names match the population's group names (e.g. `0-4`, `5-19`, `20-49`, `50-64`, `65+`), they are automatically reordered to match the model's group ordering** — so column order in the file does not matter as long as names match. If column names do not match group names, columns are taken positionally in the order they appear in the file. Missing dates are filled with zero.
 - An **inline flat list** `[d0, d1, d2, ...]` broadcast to all groups.
 - An **inline list of lists** `[[d0g0, d0g1], [d1g0, d1g1], ...]` for per-group values.
 

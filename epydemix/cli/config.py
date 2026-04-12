@@ -190,6 +190,7 @@ def _load_schedule(
     start_date: str,
     end_date: str,
     n_groups: int,
+    group_names: Optional[list] = None,
 ) -> np.ndarray:
     """Load and align a vaccination (or any dose) schedule to simulation dates.
 
@@ -197,7 +198,9 @@ def _load_schedule(
 
     * A file path (str) to a CSV whose first column is a date index and the
       remaining columns are daily doses per demographic group.  The file is
-      resolved relative to *config_dir*.
+      resolved relative to *config_dir*.  If the CSV columns match
+      ``group_names`` (in any order), they are reordered to match the model's
+      group ordering; otherwise columns are taken positionally.
     * An inline list of numbers (broadcast to all groups) or a list of lists
       (one inner list per timestep, one value per group).
 
@@ -242,6 +245,14 @@ def _load_schedule(
     df = pd.read_csv(obs_path, index_col=0, parse_dates=True)
     date_index = pd.DatetimeIndex([pd.Timestamp(d) for d in dates])
     df = df.reindex(date_index, fill_value=0.0)
+
+    # If the CSV has named columns that match the population group names, reorder
+    # them to match the model's group ordering rather than relying on column position.
+    if group_names is not None and len(df.columns) > 1:
+        csv_cols = [str(c) for c in df.columns]
+        group_names_str = [str(g) for g in group_names]
+        if set(csv_cols) == set(group_names_str):
+            df = df[group_names_str]
 
     arr = df.values.astype(float)
     if arr.shape[1] == 1 and n_groups > 1:
@@ -306,6 +317,7 @@ def build_model_from_config(
                     start_date=sim_cfg["start_date"],
                     end_date=sim_cfg["end_date"],
                     n_groups=len(model.population.Nk),
+                    group_names=list(model.population.Nk_names),
                 )
                 eligible = tr.get("eligible")
                 tr_params = (dose_array, eligible) if eligible else (dose_array,)
