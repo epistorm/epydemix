@@ -146,6 +146,25 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
             errors.append("Custom model requires 'model.compartments'")
         if "transitions" not in model_cfg:
             errors.append("Custom model requires 'model.transitions'")
+        else:
+            _BUILTIN_KINDS = {"spontaneous", "mediated", "scheduled"}
+            for i, tr in enumerate(model_cfg.get("transitions", [])):
+                kind = tr.get("kind")
+                if kind == "scheduled" and "schedule" not in tr:
+                    errors.append(
+                        f"transitions[{i}]: kind 'scheduled' requires a 'schedule' field "
+                        "(path to a CSV file or an inline list)"
+                    )
+                if kind in _BUILTIN_KINDS and kind != "scheduled" and "params" not in tr:
+                    errors.append(
+                        f"transitions[{i}]: kind '{kind}' requires a 'params' field"
+                    )
+                if kind not in _BUILTIN_KINDS:
+                    warnings.append(
+                        f"transitions[{i}]: kind '{kind}' is not a built-in kind "
+                        f"({sorted(_BUILTIN_KINDS)}); ensure it is registered via "
+                        "register_transition_kind() before running"
+                    )
 
     # Parameters section
     if "parameters" not in config:
@@ -165,7 +184,79 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def build_model_from_config(config: Dict[str, Any]) -> EpiModel:
+def _load_schedule(
+    schedule_spec,
+    config_dir: Optional[Path],
+    start_date: str,
+    end_date: str,
+    n_groups: int,
+) -> np.ndarray:
+    """Load and align a vaccination (or any dose) schedule to simulation dates.
+
+    The ``schedule_spec`` can be:
+
+    * A file path (str) to a CSV whose first column is a date index and the
+      remaining columns are daily doses per demographic group.  The file is
+      resolved relative to *config_dir*.
+    * An inline list of numbers (broadcast to all groups) or a list of lists
+      (one inner list per timestep, one value per group).
+
+    Missing dates are filled with zero.  A single-column CSV is broadcast to
+    all groups.  Returns an array of shape ``(T, n_groups)``.
+    """
+    import pandas as pd
+    from ..utils.utils import compute_simulation_dates
+
+    dates = compute_simulation_dates(start_date, end_date)
+    T = len(dates)
+
+    if isinstance(schedule_spec, list):
+        arr = np.array(schedule_spec, dtype=float)
+        if arr.ndim == 1:
+            # flat list → broadcast across groups
+            if len(arr) != T:
+                raise ValueError(
+                    f"Inline schedule has {len(arr)} entries but simulation has {T} timesteps"
+                )
+            arr = np.tile(arr[:, np.newaxis], (1, n_groups))
+        elif arr.ndim == 2:
+            if arr.shape[0] != T:
+                raise ValueError(
+                    f"Inline schedule has {arr.shape[0]} rows but simulation has {T} timesteps"
+                )
+            if arr.shape[1] == 1 and n_groups > 1:
+                arr = np.tile(arr, (1, n_groups))
+            elif arr.shape[1] != n_groups:
+                raise ValueError(
+                    f"Inline schedule has {arr.shape[1]} columns but model has {n_groups} groups"
+                )
+        return arr
+
+    # File path
+    obs_path = Path(schedule_spec)
+    if not obs_path.is_absolute() and config_dir is not None:
+        obs_path = config_dir / obs_path
+    if not obs_path.exists():
+        raise FileNotFoundError(f"Schedule file not found: {obs_path}")
+
+    df = pd.read_csv(obs_path, index_col=0, parse_dates=True)
+    date_index = pd.DatetimeIndex([pd.Timestamp(d) for d in dates])
+    df = df.reindex(date_index, fill_value=0.0)
+
+    arr = df.values.astype(float)
+    if arr.shape[1] == 1 and n_groups > 1:
+        arr = np.tile(arr, (1, n_groups))
+    elif arr.shape[1] != n_groups:
+        raise ValueError(
+            f"Schedule file has {arr.shape[1]} columns but model has {n_groups} demographic groups"
+        )
+    return arr
+
+
+def build_model_from_config(
+    config: Dict[str, Any],
+    config_dir: Optional[Path] = None,
+) -> EpiModel:
     """Build an EpiModel from a validated config dict.
 
     Args:
@@ -193,25 +284,42 @@ def build_model_from_config(config: Dict[str, Any]) -> EpiModel:
             use_default_population=True,
             default_population_size=pop_cfg.get("size", 100_000),
         )
-        # Add transitions
-        for tr in model_cfg.get("transitions", []):
-            tr_params = tr["params"]
-            # Normalize params: YAML list → tuple for mediated transitions
-            if isinstance(tr_params, list):
-                tr_params = tuple(tr_params)
-            model.add_transition(
-                source=tr["source"],
-                target=tr["target"],
-                kind=tr["kind"],
-                params=tr_params,
-            )
 
-    # Population
+    # Population — load before transitions so n_groups is correct when
+    # schedule files are resolved (e.g. kind: scheduled needs the real n_groups).
     if "name" in pop_cfg and pop_cfg["name"] != "default":
         model.import_epydemix_population(
             population_name=pop_cfg["name"],
             contact_layers=pop_cfg.get("contact_layers"),
         )
+
+    if model_type not in SUPPORTED_MODELS:
+        # Add transitions now that the population (and its n_groups) is known
+        sim_cfg = config.get("simulation", {})
+        for tr in model_cfg.get("transitions", []):
+            tr_kind = tr["kind"]
+            if tr_kind == "scheduled":
+                # Load dose schedule and build params tuple
+                dose_array = _load_schedule(
+                    tr["schedule"],
+                    config_dir=config_dir,
+                    start_date=sim_cfg["start_date"],
+                    end_date=sim_cfg["end_date"],
+                    n_groups=len(model.population.Nk),
+                )
+                eligible = tr.get("eligible")
+                tr_params = (dose_array, eligible) if eligible else (dose_array,)
+            else:
+                tr_params = tr["params"]
+                # Normalize params: YAML list → tuple for mediated transitions
+                if isinstance(tr_params, list):
+                    tr_params = tuple(tr_params)
+            model.add_transition(
+                source=tr["source"],
+                target=tr["target"],
+                kind=tr_kind,
+                params=tr_params,
+            )
 
     # Override parameters (if different from what predefined model set)
     if model_type in SUPPORTED_MODELS and params:
@@ -273,15 +381,23 @@ def build_initial_conditions(
     return ic_dict if ic_dict else None
 
 
-def run_from_config(config: Dict[str, Any]) -> Tuple[Any, Dict]:
+def run_from_config(
+    config: Dict[str, Any],
+    config_dir: Optional[Path] = None,
+) -> Tuple[Any, Dict]:
     """Build and run a simulation from a config dict.
+
+    Args:
+        config: The full config dict.
+        config_dir: Directory of the config file, used to resolve relative
+            paths inside the config (e.g. ``schedule`` files for ``scheduled``
+            transitions).
 
     Returns:
         Tuple of (SimulationResults, manifest_dict).
     """
-    model = build_model_from_config(config)
+    model = build_model_from_config(config, config_dir=config_dir)
     sim_cfg = config.get("simulation", {})
-    output_cfg = config.get("output", {})
 
     ic = build_initial_conditions(config, model)
 
@@ -449,6 +565,7 @@ def load_observed_data(
 
 def _make_simulation_function(
     config: Dict[str, Any],
+    config_dir: Optional[Path] = None,
 ) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
     """Create a simulation function suitable for ABCSampler.
 
@@ -462,7 +579,7 @@ def _make_simulation_function(
     """
     from ..model.epimodel import simulate
 
-    model = build_model_from_config(config)
+    model = build_model_from_config(config, config_dir=config_dir)
     sim_cfg = config.get("simulation", {})
     ic = build_initial_conditions(config, model)
     target = config.get("calibration", {}).get("target_variable")
@@ -603,7 +720,7 @@ def calibrate_from_config(
     # Build components
     priors = build_priors(cal_cfg)
     observed = load_observed_data(cal_cfg, config_dir=config_dir)
-    sim_fn = _make_simulation_function(config)
+    sim_fn = _make_simulation_function(config, config_dir=config_dir)
     distance_fn = _resolve_distance_function(cal_cfg.get("distance", "rmse"))
 
     # Fixed parameters = parameters section minus any that appear in priors
@@ -720,6 +837,7 @@ def validate_projection_config(
 def project_from_config(
     config: Dict[str, Any],
     calibration_bundle: str,
+    config_dir: Optional[Path] = None,
 ) -> Tuple[Any, Dict]:
     """Run forward projections by sampling parameters from a calibration posterior.
 
@@ -776,7 +894,7 @@ def project_from_config(
         w = np.ones(len(posterior_df)) / len(posterior_df)
 
     # --- build model and simulation params --------------------------------
-    model = build_model_from_config(config)
+    model = build_model_from_config(config, config_dir=config_dir)
     sim_cfg = config.get("simulation", {})
     ic = build_initial_conditions(config, model)
     n_simulations = proj_cfg.get("n_simulations", 200)

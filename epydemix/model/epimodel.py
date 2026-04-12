@@ -132,6 +132,9 @@ class EpiModel:
         self.register_transition_kind(
             kind="mediated", function=compute_mediated_transition_rate
         )
+        self.register_transition_kind(
+            kind="scheduled", function=compute_scheduled_transition_rate
+        )
 
     def __repr__(self) -> str:
         """
@@ -995,6 +998,7 @@ def stochastic_simulation(
         "pop": None,
         "pop_sizes": pop_sizes,
         "dt": dt,
+        "source": None,
     }
 
     # Simulate each time step
@@ -1022,6 +1026,8 @@ def stochastic_simulation(
 
             if not np.any(current_pop):
                 continue
+
+            system_data["source"] = comp
 
             for tr in transitions:
                 target_idx = comp_indices[tr.target]
@@ -1112,6 +1118,68 @@ def compute_mediated_transition_rate(params, data):
         axis=1,
     )
     return rate_eval * interaction
+
+
+def compute_scheduled_transition_rate(params, data):
+    """
+    Compute the rate of a scheduled (dose-driven) transition, e.g. vaccination.
+
+    ``params`` is a tuple produced by the config layer:
+
+    * ``params[0]``: ``np.ndarray`` of shape ``(T, n_groups)`` — daily doses per
+      timestep and demographic group.
+    * ``params[1]`` *(optional)*: list of compartment names that are *eligible*
+      to receive doses (e.g. ``["S", "R"]``).  Doses are distributed across the
+      eligible pool, but only those landing on the *source* compartment are
+      effective.  This prevents overestimating vaccination impact when a growing
+      recovered population absorbs a share of doses without benefit.
+
+      If omitted, the rate is computed directly from the source compartment:
+      ``rate = min(doses / source_pop, 0.999)``.
+
+    The effective rate formula when ``eligible`` is provided:
+
+    .. code-block:: text
+
+        eligible_pop  = sum of pop[c] for c in eligible
+        rate          = min(doses / eligible_pop, 0.999)
+
+    This is equivalent to ``effective_doses / source_pop`` where
+    ``effective_doses = doses * (source_pop / eligible_pop)``, but avoids a
+    division by ``source_pop`` that would cancel out.
+
+    Args:
+        params: Tuple ``(dose_array, eligible_compartments)`` or
+            ``(dose_array,)``.
+        data: Standard simulation data dict, must include ``"source"`` (the
+            name of the source compartment, set by the simulation loop).
+
+    Returns:
+        np.ndarray of per-group transition rates for the current timestep.
+    """
+    doses_today = params[0][data["t"]]  # shape: (n_groups,) or scalar
+
+    # Broadcast scalar doses to all groups
+    n_groups = len(data["pop_sizes"])
+    if np.ndim(doses_today) == 0:
+        doses_today = np.full(n_groups, float(doses_today))
+    else:
+        doses_today = np.asarray(doses_today, dtype=float)
+
+    eligible = params[1] if len(params) > 1 and params[1] else None
+
+    if eligible:
+        eligible_pop = sum(
+            data["pop"][data["comp_indices"][c]] for c in eligible
+        ).astype(float)
+        eligible_pop = np.maximum(eligible_pop, 1.0)
+        rate = np.minimum(doses_today / eligible_pop, 0.999)
+    else:
+        source_pop = data["pop"][data["comp_indices"][data["source"]]].astype(float)
+        safe_pop = np.maximum(source_pop, 1.0)
+        rate = np.where(source_pop > 0, np.minimum(doses_today / safe_pop, 0.999), 0.0)
+
+    return rate
 
 
 def validate_transition_function(func: Callable) -> None:

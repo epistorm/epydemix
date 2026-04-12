@@ -181,3 +181,110 @@ def test_stochastic_simulation_invalid_initial_conditions(mock_epimodel):
             initial_conditions=initial_conditions,
             dt=dt,
         )
+
+
+# ---------------------------------------------------------------------------
+# Scheduled transition kind
+# ---------------------------------------------------------------------------
+
+def test_scheduled_transition_vaccinees_leave_S():
+    """Scheduled transition moves individuals from S to V at the dose rate."""
+    T = 30
+    pop_size = 10_000
+    daily_doses = 100  # flat dose schedule
+
+    model = EpiModel(
+        compartments=["S", "V", "I", "R"],
+        parameters={"transmission_rate": 0.1, "recovery_rate": 0.05},
+    )
+    # Vaccination: S → V at a scheduled dose rate
+    dose_array = np.full((T, 1), daily_doses, dtype=float)
+    model.add_transition("S", "V", kind="scheduled", params=(dose_array,))
+    # Standard SIR dynamics on the unvaccinated
+    model.add_transition("S", "I", kind="mediated", params=("transmission_rate", "I"))
+    model.add_transition("I", "R", kind="spontaneous", params="recovery_rate")
+
+    pop = Population()
+    pop.add_population([pop_size])
+    pop.add_contact_matrix(np.ones((1, 1)))
+    model.set_population(pop)
+
+    results = model.run_simulations(
+        start_date="2026-01-01",
+        end_date="2026-01-30",
+        Nsim=5,
+        initial_conditions_dict={
+            "S": np.array([pop_size - 10], dtype=float),
+            "I": np.array([10], dtype=float),
+            "V": np.array([0], dtype=float),
+            "R": np.array([0], dtype=float),
+        },
+    )
+
+    df = results.get_quantiles_compartments()
+    median = df[df["quantile"] == 0.5]
+    final_V = median["V_total"].iloc[-1]
+    final_S = median["S_total"].iloc[-1]
+
+    # V should have grown substantially (at least 10 days * ~100 doses each)
+    assert final_V > 500, f"Expected V > 500 after 30 days of vaccination, got {final_V}"
+    # S should be lower than initial
+    assert final_S < pop_size - 10, "S should have decreased due to vaccination"
+
+
+def test_scheduled_transition_eligible_correction():
+    """With eligible correction, dose-wasting on R reduces effective rate."""
+    T = 20
+    pop_size = 1_000
+    daily_doses = 50
+
+    model_no_correction = EpiModel(
+        compartments=["S", "V", "I", "R"],
+        parameters={"transmission_rate": 0.0, "recovery_rate": 0.0},
+    )
+    model_with_correction = EpiModel(
+        compartments=["S", "V", "I", "R"],
+        parameters={"transmission_rate": 0.0, "recovery_rate": 0.0},
+    )
+
+    dose_array = np.full((T, 1), daily_doses, dtype=float)
+
+    # No correction: rate = doses / S
+    model_no_correction.add_transition("S", "V", kind="scheduled", params=(dose_array,))
+    # With correction: rate = doses / (S + R) → fewer effective doses when R > 0
+    model_with_correction.add_transition(
+        "S", "V", kind="scheduled", params=(dose_array, ["S", "R"])
+    )
+
+    for m in (model_no_correction, model_with_correction):
+        pop = Population()
+        pop.add_population([pop_size])
+        pop.add_contact_matrix(np.ones((1, 1)))
+        m.set_population(pop)
+
+    ic = {
+        "S": np.array([600.0]),
+        "V": np.array([0.0]),
+        "I": np.array([0.0]),
+        "R": np.array([400.0]),  # large recovered pool absorbs wasted doses
+    }
+
+    res_no = model_no_correction.run_simulations(
+        "2026-01-01", "2026-01-20", Nsim=1, initial_conditions_dict=ic
+    )
+    res_with = model_with_correction.run_simulations(
+        "2026-01-01", "2026-01-20", Nsim=1, initial_conditions_dict=ic
+    )
+
+    df_no = res_no.get_quantiles_compartments()
+    df_with = res_with.get_quantiles_compartments()
+
+    V_no   = df_no[df_no["quantile"] == 0.5]["V_total"].iloc[-1]
+    V_with = df_with[df_with["quantile"] == 0.5]["V_total"].iloc[-1]
+
+    # Without correction ignores the R pool → more S vaccinated
+    # With correction only effective doses (fraction S/(S+R) = 0.6) reach S
+    assert V_no > V_with, (
+        f"No-correction model should vaccinate more (got {V_no:.1f}) "
+        f"than with-correction model (got {V_with:.1f})"
+    )

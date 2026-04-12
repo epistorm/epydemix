@@ -157,6 +157,8 @@ overrides:
 
 **Optional sections:** `parameters` (defaults used if omitted), `population`, `initial_conditions`, `interventions`, `overrides`, `base`.
 
+Custom models can also use `kind: scheduled` transitions (see Building Custom Models) to drive compartment flows from a daily dose CSV — useful for vaccination campaigns.
+
 ### Config inheritance
 
 A config can inherit from another using the `base` field. The overlay is deep-merged on top of the base: dicts merge recursively, everything else (lists, scalars) replaces. This means a scenario overlay only needs to specify what changes.
@@ -350,6 +352,32 @@ The `params` field can be a parameter expression:
   kind: mediated
   params: ["transmission_rate", "I"]   # [rate_parameter, agent_compartment]
 ```
+
+**`scheduled`** — the rate is driven by a pre-specified daily dose schedule. Use for: vaccination campaigns, prophylaxis roll-outs, or any intervention that moves individuals at a time-varying absolute rate rather than a fixed per-capita rate.
+
+```yaml
+# "Susceptibles are vaccinated according to a daily dose schedule"
+- source: S
+  target: SV
+  kind: scheduled
+  schedule: doses.csv          # path to CSV (relative to config file), or inline list
+  eligible: ["S", "R"]         # optional — compartments that receive doses
+                               # (only source compartment individuals are effectively moved)
+```
+
+`schedule` accepts:
+- A **CSV file path** (resolved relative to the config file). The first column must be a date index; the remaining columns are daily doses per demographic group, in the same order as the model's population groups. Missing dates are filled with zero.
+- An **inline flat list** `[d0, d1, d2, ...]` broadcast to all groups.
+- An **inline list of lists** `[[d0g0, d0g1], [d1g0, d1g1], ...]` for per-group values.
+
+`eligible` (optional): compartments that receive doses but where only doses landing on the source compartment are effective. For example, `eligible: ["S", "R"]` models a campaign that jabs both susceptibles and recovered individuals — only doses administered to S produce vaccinations, the rest are wasted. If omitted, effective doses equal total doses.
+
+The transition rate at each timestep is: `rate = min(doses / eligible_pop, 0.999)` (with eligible correction) or `min(doses / source_pop, 0.999)` (without).
+
+| Natural language | Transition |
+|---|---|
+| "X individuals vaccinated per day from a time-series schedule" | `scheduled`, schedule: `doses.csv` |
+| "doses distributed across S and R, only S benefit" | `scheduled`, schedule: `doses.csv`, eligible: `["S", "R"]` |
 
 For models with multiple infectious classes, add one mediated transition per infectious compartment:
 ```yaml

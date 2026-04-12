@@ -947,6 +947,132 @@ class TestProjectCLI:
 
 
 # ---------------------------------------------------------------------------
+# Scheduled transition tests (CLI level)
+# ---------------------------------------------------------------------------
+
+def _sirv_config_inline_schedule(n_days=20):
+    """Return a custom SIRV config with an inline flat dose schedule."""
+    # Constant daily dose of 500 across the full simulation
+    schedule = [500.0] * n_days
+    return {
+        "model": {
+            "type": "custom",
+            "compartments": ["S", "V", "I", "R"],
+            "transitions": [
+                {"source": "S", "target": "V", "kind": "scheduled",
+                 "schedule": schedule},
+                {"source": "S", "target": "I", "kind": "mediated",
+                 "params": ["transmission_rate", "I"]},
+                {"source": "I", "target": "R", "kind": "spontaneous",
+                 "params": "recovery_rate"},
+            ],
+        },
+        "simulation": {
+            "start_date": "2023-01-01",
+            "end_date": "2023-01-20",
+            "n_simulations": 3,
+        },
+        "parameters": {
+            "transmission_rate": 0.3,
+            "recovery_rate": 0.1,
+        },
+        "population": {"size": 100_000},
+        "initial_conditions": {
+            "S": 0.99,
+            "V": 0.0,
+            "I": 0.01,
+            "R": 0.0,
+        },
+    }
+
+
+class TestScheduledTransitions:
+    """CLI-level tests for scheduled (dose-driven) transitions."""
+
+    def test_run_inline_schedule(self, tmp_path):
+        """Run a custom SIRV model with an inline dose schedule."""
+        cfg = _sirv_config_inline_schedule()
+        config_path = _write_yaml(tmp_path, cfg, "sirv_inline.yaml")
+        output_path = str(tmp_path / "sirv_inline.epx")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", config_path, "-o", output_path])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert os.path.isdir(output_path)
+
+        # Inspect: V compartment should have non-zero values
+        result = runner.invoke(cli, [
+            "inspect", output_path, "quantiles", "-v", "V_total", "-q", "0.5",
+        ])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "V_total" in data
+        # Median vaccinated at end should be > 0
+        assert max(data["V_total"]["0.5"]) > 0
+
+    def test_run_csv_schedule(self, tmp_path):
+        """Run with a CSV dose schedule file."""
+        import pandas as pd
+
+        n_days = 20
+        dates = pd.date_range("2023-01-01", periods=n_days, freq="D")
+        doses = [500.0] * n_days
+        csv_path = tmp_path / "doses.csv"
+        pd.DataFrame({"date": dates, "doses": doses}).to_csv(
+            csv_path, index=False,
+        )
+        # CSV with date index → need to rewrite with date as index
+        df = pd.DataFrame({"doses": doses}, index=dates)
+        df.to_csv(csv_path)
+
+        cfg = _sirv_config_inline_schedule(n_days)
+        # Replace inline schedule with CSV reference
+        cfg["model"]["transitions"][0]["schedule"] = "doses.csv"
+        config_path = _write_yaml(tmp_path, cfg, "sirv_csv.yaml")
+        output_path = str(tmp_path / "sirv_csv.epx")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", config_path, "-o", output_path])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert os.path.isdir(output_path)
+
+    def test_run_with_eligible(self, tmp_path):
+        """Run with eligible compartments (dose-wasting correction)."""
+        cfg = _sirv_config_inline_schedule()
+        # Add eligible field: doses distributed across S and R, only S benefit
+        cfg["model"]["transitions"][0]["eligible"] = ["S", "R"]
+        config_path = _write_yaml(tmp_path, cfg, "sirv_eligible.yaml")
+        output_path = str(tmp_path / "sirv_eligible.epx")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", config_path, "-o", output_path])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+    def test_validate_missing_schedule(self, tmp_path):
+        """Validation should fail when scheduled transition has no schedule."""
+        cfg = _sirv_config_inline_schedule()
+        del cfg["model"]["transitions"][0]["schedule"]
+        config_path = _write_yaml(tmp_path, cfg, "sirv_bad.yaml")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["validate", config_path])
+        assert result.exit_code != 0 or (
+            result.exit_code == 0
+            and not json.loads(result.output).get("valid", True)
+        )
+
+    def test_validate_scheduled_ok(self, tmp_path):
+        """Validation should pass for a valid scheduled transition config."""
+        cfg = _sirv_config_inline_schedule()
+        config_path = _write_yaml(tmp_path, cfg, "sirv_ok.yaml")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["validate", config_path])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["valid"] is True
+
+
+# ---------------------------------------------------------------------------
 # Provenance / lineage tests
 # ---------------------------------------------------------------------------
 

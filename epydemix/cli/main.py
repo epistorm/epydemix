@@ -82,7 +82,8 @@ def run(config_path, output):
         click.echo(f"Warning: {w}", err=True)
 
     try:
-        results, used_config = run_from_config(config)
+        config_dir = Path(config_path).parent
+        results, used_config = run_from_config(config, config_dir=config_dir)
         prov = {
             "command": "run",
             "config_path": str(Path(config_path).resolve()),
@@ -244,7 +245,10 @@ def project(calibration_bundle, config_path, output):
         click.echo(f"Warning: {w}", err=True)
 
     try:
-        results, used_config = project_from_config(config, calibration_bundle)
+        proj_config_dir = Path(config_path).parent if config_path is not None else None
+        results, used_config = project_from_config(
+            config, calibration_bundle, config_dir=proj_config_dir
+        )
         prov = {
             "command": "project",
             "parent_bundle": str(Path(calibration_bundle).resolve()),
