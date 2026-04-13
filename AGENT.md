@@ -59,6 +59,15 @@ epydemix inspect results.epx quantiles -v I_total --start 2020-03-01 --end 2020-
 
 # 10. For anything the canned queries can't do, write Python against the Parquet files
 #     (the manifest gives you full column schemas — see Output Reference)
+
+# 11. Project forward from a calibration posterior
+epydemix calibrate cal_config.yaml -o calibration.epx
+# Overlay config is passed with -c/--config, NOT as a positional argument
+epydemix project calibration.epx -c projection.yaml -o projection.epx
+# Omit -c to replay the calibration period with posterior samples
+epydemix project calibration.epx -o projection.epx
+# NOTE: do NOT run `epydemix validate` on a projection overlay — it is a partial
+# diff, not a standalone config. Validation happens inside `epydemix project`.
 ```
 
 ## Available Models
@@ -208,6 +217,23 @@ The `manifest.json` is the bridge between the opaque Parquet files and the agent
 - `provenance`: lineage information recording how the bundle was produced
 
 **The `files` section is your schema reference.** Use it to write correct `pd.read_parquet()` calls when the canned inspect commands are insufficient.
+
+Two things to get right when reading `files`:
+
+- **Keys are file stems, not full filenames.** Use `m['files']['compartments']`, not `m['files']['compartments.parquet']`.
+- **`columns` is a dict keyed by column name, not a list.** Iterate with `.items()` or index directly by name.
+
+```python
+import json, subprocess
+manifest = json.loads(subprocess.check_output(
+    ["epydemix", "inspect", "results.epx", "manifest"]))
+
+# List all column names in compartments file
+cols = list(manifest["files"]["compartments"]["columns"].keys())
+
+# Get dtype for a specific column
+dtype = manifest["files"]["compartments"]["columns"]["Infected_total"]["dtype"]
+```
 
 **Getting population size:** the manifest does not include a `size` or `name` field. Derive total population size from the Parquet data: `comp_df.groupby("date")[["S_total","I_total",...]].sum(axis=1).iloc[0]`, or sum across all `_total` compartment columns on any single row.
 
@@ -845,6 +871,9 @@ epydemix inspect calibration.epx posterior
 # 6. Check fit quality
 epydemix inspect calibration.epx fit -v Infected_total -q 0.05,0.5,0.95
 # 7. Visualize (see Recipe 4 in Visualization Recipes)
+# 8. Project forward (see Projections section)
+#    Write a projection overlay (only the deltas), then run directly — no validate step:
+#    epydemix project calibration.epx -c projection.yaml -o projection.epx
 ```
 
 Config inheritance works with calibration configs: write a base simulation config, then an overlay that adds only the `calibration` section. This keeps the model definition and the calibration setup separate and reusable.
@@ -864,6 +893,10 @@ epydemix project calibration.epx -o projection.epx
 ```
 
 This uses the calibration bundle's stored config and samples 200 simulations (default) from the last-generation posterior.
+
+**CLI signature:** `epydemix project CALIBRATION_BUNDLE [-c CONFIG] -o OUTPUT`
+
+The calibration bundle is the only positional argument. The overlay config is always a **named** option (`-c` / `--config`). Do **not** pass it as a second positional argument — that will fail with `Got unexpected extra argument`.
 
 ### Projection config overlay
 
@@ -890,6 +923,8 @@ Then run:
 ```bash
 epydemix project calibration.epx --config projection.yaml -o projection.epx
 ```
+
+> **Do not validate projection overlays standalone.** `epydemix validate` treats its input as a complete config and will error on a minimal overlay that omits `model`, `parameters`, or `initial_conditions`. Projection overlays are not standalone configs — they are diffs that `epydemix project` merges at runtime against the calibration bundle's stored config. Validation happens internally before the simulation starts. Skip the `epydemix validate` step for overlay files passed via `-c`.
 
 ### Projection config reference
 
