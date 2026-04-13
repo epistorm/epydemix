@@ -11,6 +11,10 @@ import numpy as np
 from ..model.epimodel import EpiModel
 from ..model.predefined_models import SUPPORTED_MODELS, load_predefined_model
 
+# Default simulation counts when not specified in config
+DEFAULT_N_SIMULATIONS = 100
+DEFAULT_N_PROJECTIONS = 200
+
 
 def _load_raw(path: str) -> Dict[str, Any]:
     """Load a single config file without resolving inheritance."""
@@ -419,7 +423,7 @@ def run_from_config(
     results = model.run_simulations(
         start_date=sim_cfg["start_date"],
         end_date=sim_cfg["end_date"],
-        Nsim=sim_cfg.get("n_simulations", 100),
+        Nsim=sim_cfg.get("n_simulations", DEFAULT_N_SIMULATIONS),
         dt=sim_cfg.get("dt", 1.0),
         initial_conditions_dict=ic,
     )
@@ -838,7 +842,7 @@ def validate_projection_config(
 
     # Projection-specific settings
     proj = config.get("projection", {})
-    n_sim = proj.get("n_simulations", 200)
+    n_sim = proj.get("n_simulations", DEFAULT_N_PROJECTIONS)
     if not isinstance(n_sim, int) or n_sim < 1:
         errors.append("projection.n_simulations must be a positive integer")
 
@@ -912,7 +916,7 @@ def project_from_config(
     model = build_model_from_config(config, config_dir=config_dir)
     sim_cfg = config.get("simulation", {})
     ic = build_initial_conditions(config, model)
-    n_simulations = proj_cfg.get("n_simulations", 200)
+    n_simulations = proj_cfg.get("n_simulations", DEFAULT_N_PROJECTIONS)
 
     # --- sample and simulate ----------------------------------------------
     from ..model.simulation_results import SimulationResults

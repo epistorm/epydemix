@@ -244,16 +244,16 @@ class TestInspectQuantiles:
         assert sliced["dates"][0] >= "2023-01-05"
         assert sliced["dates"][-1] <= "2023-01-15"
 
-    def test_quantiles_precision(self, bundle_path):
+    def test_quantiles_full_precision(self, bundle_path):
+        """Inspection API returns full-precision floats; rounding is CLI-only."""
         result = inspect_bundle(
             bundle_path, "quantiles",
             variables=["Infected_total"],
             quantiles=[0.5],
-            precision=0,
         )
-        # All values should be integers (precision=0)
+        # All values should be plain floats (no internal rounding)
         for val in result["Infected_total"]["0.5"]:
-            assert val == int(val)
+            assert isinstance(val, float)
 
 
 class TestInspectSummary:

@@ -198,7 +198,6 @@ def project(calibration_bundle, config_path, output):
     # Build the effective config
     try:
         import yaml
-        from pathlib import Path
 
         from .config import _deep_merge
 
@@ -216,7 +215,6 @@ def project(calibration_bundle, config_path, output):
                 "CONFIG_LOAD_ERROR",
                 "No config.yaml or config.json found in calibration bundle.",
             )
-            return  # unreachable, _error_json exits
 
         # Strip the calibration section — not applicable to projections.
         bundle_config.pop("calibration", None)
@@ -534,14 +532,15 @@ def compare(bundles, metrics, variables, names, precision, baseline):
             scenario_delta = {}
             for metric_name, metric_val in metrics_data.items():
                 base_val = base_data.get(metric_name, {})
-                # Compute delta on median values (numeric only)
+                # Compute delta on median or value fields (numeric only).
+                # Rounding is handled by _print_json at the output layer.
                 if "median" in metric_val and "median" in base_val:
                     bm = base_val["median"]
                     sm = metric_val["median"]
                     if (bm is not None and sm is not None
                             and isinstance(bm, (int, float))
                             and isinstance(sm, (int, float))):
-                        scenario_delta[metric_name] = round(sm - bm, precision)
+                        scenario_delta[metric_name] = sm - bm
                 elif "value" in metric_val and "value" in base_val:
                     bv = base_val["value"]
                     sv = metric_val["value"]

@@ -180,7 +180,7 @@ class SimulationResults:
             parameters=self.parameters,
         )
 
-    def save(self, path: str, config: Optional[Dict] = None) -> Dict[str, Any]:
+    def save(self, path: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Save results as an .epx bundle (Parquet + manifest).
 
         Args:

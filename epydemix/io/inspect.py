@@ -23,7 +23,7 @@ def inspect_bundle(
     Args:
         path: Path to the .epx bundle directory.
         command: One of ``"manifest"``, ``"quantiles"``, ``"summary"``,
-            ``"peak"``, ``"posterior"``, ``"fit"``, ``"export"``.
+            ``"peak"``, ``"posterior"``, ``"fit"``.
         **kwargs: Command-specific arguments.
 
     Returns:
@@ -210,8 +210,12 @@ def _cmd_summary(
         # Final value across simulations
         final_values = pivoted.iloc[-1]
 
+        # Use sorted-index approach for median date (robust across pandas versions)
+        peak_dates_sorted = pd.to_datetime(peak_indices).sort_values()
+        n_peaks = len(peak_dates_sorted)
+
         var_summary = {
-            "peak_date_median": str(peak_indices.median())[:10] if len(peak_indices) > 0 else None,
+            "peak_date_median": str(peak_dates_sorted.iloc[n_peaks // 2])[:10] if n_peaks > 0 else None,
             "peak_value": {
                 "0.05": float(peak_values.quantile(0.05)),
                 "0.50": float(peak_values.quantile(0.50)),
@@ -332,7 +336,9 @@ def _cmd_fit(
     # Load trajectories
     traj_path = bundle_path / "trajectories.parquet"
     if not traj_path.exists():
-        return {"error": "No trajectories file found in calibration bundle."}
+        raise FileNotFoundError(
+            f"No trajectories.parquet found in calibration bundle at {bundle_path}"
+        )
 
     traj_df = pd.read_parquet(traj_path)
 

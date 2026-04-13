@@ -1,6 +1,6 @@
 """Load disease-specific default parameter sets from YAML files."""
 
-import os
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -47,6 +47,13 @@ class DefaultParameterSet:
 
         Args:
             tags: Additional tags to add to every spec (e.g. the disease name).
+
+        Note:
+            All parameters are assigned ``kind="rate"`` because the shipped
+            disease defaults (COVID-19, influenza, measles) only contain
+            rate-type parameters.  If a future YAML default includes non-rate
+            parameters, add an optional ``kind`` field to the YAML and read
+            it here with ``info.get("kind", "rate")``.
         """
         specs = []
         for name, info in self.parameters.items():
@@ -54,7 +61,7 @@ class DefaultParameterSet:
             spec = ParameterSpec(
                 name=name,
                 description=info.get("description", ""),
-                kind="rate",  # defaults are all rates for SEIR-family models
+                kind=info.get("kind", "rate"),
                 default=info["value"],
                 min=rng[0] if rng else None,
                 max=rng[1] if len(rng) > 1 else None,
@@ -77,10 +84,19 @@ class DefaultParameterSet:
             }
         """
         result = {}
+        skipped = []
         for name, info in self.parameters.items():
             rng = info.get("range")
             if rng and len(rng) == 2:
                 result[name] = (rng[0], rng[1])
+            else:
+                skipped.append(name)
+        if skipped:
+            warnings.warn(
+                f"as_priors() skipped parameters without a [min, max] range: "
+                f"{', '.join(skipped)}",
+                stacklevel=2,
+            )
         return result
 
     def to_dict(self) -> Dict[str, Any]:

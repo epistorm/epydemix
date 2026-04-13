@@ -54,8 +54,3 @@ def to_json(obj: Any, precision: int = 6, indent: int = 2) -> str:
     """
     rounded = _round_recursive(obj, precision)
     return json.dumps(rounded, cls=NumpySafeEncoder, indent=indent)
-
-
-def round_values(d: dict, precision: int) -> dict:
-    """Recursively round float values in a nested dict."""
-    return _round_recursive(d, precision)

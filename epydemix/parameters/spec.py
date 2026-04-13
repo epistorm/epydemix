@@ -7,6 +7,9 @@ from typing import Any, Dict, List, Optional
 # Valid values for the 'kind' field
 PARAMETER_KINDS = ("rate", "probability", "count", "duration", "proportion", "dimensionless")
 
+# Valid values for the 'dtype' field
+PARAMETER_DTYPES = ("float", "int", "array")
+
 # Valid values for the 'shape' field
 PARAMETER_SHAPES = ("scalar", "time_varying", "age_structured", "time_x_age")
 
@@ -57,6 +60,11 @@ class ParameterSpec:
             raise ValueError(
                 f"Invalid parameter kind '{self.kind}'. "
                 f"Must be one of: {PARAMETER_KINDS}"
+            )
+        if self.dtype not in PARAMETER_DTYPES:
+            raise ValueError(
+                f"Invalid parameter dtype '{self.dtype}'. "
+                f"Must be one of: {PARAMETER_DTYPES}"
             )
         if self.shape not in PARAMETER_SHAPES:
             raise ValueError(
@@ -112,9 +120,9 @@ class ParameterSpec:
 
     def to_json_schema_property(self) -> Dict[str, Any]:
         """Return a JSON Schema property definition for this parameter."""
-        dtype_map = {"float": "number", "int": "integer", "array": "array"}
+        _DTYPE_TO_JSON = {"float": "number", "int": "integer", "array": "array"}
         prop: Dict[str, Any] = {
-            "type": dtype_map.get(self.dtype, "number"),
+            "type": _DTYPE_TO_JSON[self.dtype],
             "description": self.description,
         }
         if self.units:
