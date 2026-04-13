@@ -190,11 +190,25 @@ def build_calibration_manifest(
     if target_variable:
         calibration_section["target_variable"] = target_variable
 
+    # Extract population metadata from config if available
+    population_section = None
+    if config:
+        pop_cfg = config.get("population", {})
+        if pop_cfg:
+            population_section = {}
+            if "name" in pop_cfg:
+                population_section["name"] = pop_cfg["name"]
+            if "size" in pop_cfg:
+                population_section["size"] = pop_cfg["size"]
+            if "contact_layers" in pop_cfg:
+                population_section["contact_layers"] = pop_cfg["contact_layers"]
+
     manifest = {
         "type": "CalibrationResults",
         "epydemix_version": _get_version(),
         "created_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "calibration": calibration_section,
+        "population": population_section,
         "parameters_used": _scalar_params(results.calibration_params),
         "files": {
             "posterior": {

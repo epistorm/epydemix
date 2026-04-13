@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 
 from .bundle import load_bundle, load_bundle_dataframe
-from .json_utils import round_values
 
 
 def inspect_bundle(
@@ -139,7 +138,6 @@ def _cmd_quantiles(
     start: Optional[str] = None,
     end: Optional[str] = None,
     resample: Optional[str] = None,
-    precision: int = 2,
     **kwargs,
 ) -> Dict[str, Any]:
     """Compute quantiles across simulations for selected variables.
@@ -150,7 +148,6 @@ def _cmd_quantiles(
         start: Start date for time slice.
         end: End date for time slice.
         resample: Temporal resampling frequency (e.g. 'W', 'M').
-        precision: Decimal places for rounding.
     """
     if quantiles is None:
         quantiles = [0.05, 0.25, 0.5, 0.75, 0.95]
@@ -176,7 +173,7 @@ def _cmd_quantiles(
         var_result = {}
         for q in quantiles:
             vals = pivoted.quantile(q, axis=1).values
-            var_result[str(q)] = [round(float(v), precision) for v in vals]
+            var_result[str(q)] = [float(v) for v in vals]
         result[var] = var_result
 
     return result
@@ -187,7 +184,6 @@ def _cmd_summary(
     variables: Optional[List[str]] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
-    precision: int = 2,
     **kwargs,
 ) -> Dict[str, Any]:
     """Compute summary statistics for selected variables.
@@ -217,17 +213,17 @@ def _cmd_summary(
         var_summary = {
             "peak_date_median": str(peak_indices.median())[:10] if len(peak_indices) > 0 else None,
             "peak_value": {
-                "0.05": round(float(peak_values.quantile(0.05)), precision),
-                "0.50": round(float(peak_values.quantile(0.50)), precision),
-                "0.95": round(float(peak_values.quantile(0.95)), precision),
+                "0.05": float(peak_values.quantile(0.05)),
+                "0.50": float(peak_values.quantile(0.50)),
+                "0.95": float(peak_values.quantile(0.95)),
             },
             "final_value": {
-                "0.05": round(float(final_values.quantile(0.05)), precision),
-                "0.50": round(float(final_values.quantile(0.50)), precision),
-                "0.95": round(float(final_values.quantile(0.95)), precision),
+                "0.05": float(final_values.quantile(0.05)),
+                "0.50": float(final_values.quantile(0.50)),
+                "0.95": float(final_values.quantile(0.95)),
             },
             "mean_across_time": {
-                "0.50": round(float(pivoted.quantile(0.5, axis=1).mean()), precision),
+                "0.50": float(pivoted.quantile(0.5, axis=1).mean()),
             },
         }
         result[var] = var_summary
@@ -240,7 +236,6 @@ def _cmd_peak(
     variables: Optional[List[str]] = None,
     start: Optional[str] = None,
     end: Optional[str] = None,
-    precision: int = 2,
     **kwargs,
 ) -> Dict[str, Any]:
     """Find peak timing and magnitude for selected variables."""
@@ -270,9 +265,9 @@ def _cmd_peak(
                 "0.95": str(sorted_dates.iloc[min(n - 1, int(0.95 * n))])[:10] if n > 0 else None,
             },
             "peak_value": {
-                "0.05": round(float(peak_values.quantile(0.05)), precision),
-                "0.50": round(float(peak_values.quantile(0.50)), precision),
-                "0.95": round(float(peak_values.quantile(0.95)), precision),
+                "0.05": float(peak_values.quantile(0.05)),
+                "0.50": float(peak_values.quantile(0.50)),
+                "0.95": float(peak_values.quantile(0.95)),
             },
         }
 
@@ -282,7 +277,6 @@ def _cmd_peak(
 def _cmd_posterior(
     path: str,
     generation: Optional[int] = None,
-    precision: int = 4,
     **kwargs,
 ) -> Dict[str, Any]:
     """Summarize posterior distributions from calibration results."""
@@ -300,13 +294,13 @@ def _cmd_posterior(
     for col in param_cols:
         vals = df[col].dropna()
         result[col] = {
-            "mean": round(float(vals.mean()), precision),
-            "std": round(float(vals.std()), precision),
+            "mean": float(vals.mean()),
+            "std": float(vals.std()),
             "ci95": [
-                round(float(vals.quantile(0.025)), precision),
-                round(float(vals.quantile(0.975)), precision),
+                float(vals.quantile(0.025)),
+                float(vals.quantile(0.975)),
             ],
-            "median": round(float(vals.median()), precision),
+            "median": float(vals.median()),
         }
 
     return result
@@ -316,7 +310,6 @@ def _cmd_fit(
     path: str,
     variables: Optional[List[str]] = None,
     quantiles: Optional[List[float]] = None,
-    precision: int = 2,
     **kwargs,
 ) -> Dict[str, Any]:
     """Get calibration fit trajectories (observed vs. simulated quantiles).
@@ -377,7 +370,7 @@ def _cmd_fit(
         var_result = {}
         for q in quantiles:
             vals = pivoted.quantile(q, axis=1).values
-            var_result[str(q)] = [round(float(v), precision) for v in vals]
+            var_result[str(q)] = [float(v) for v in vals]
         result[var] = var_result
 
     if observed is not None:
@@ -387,7 +380,7 @@ def _cmd_fit(
         for var_name, grp in observed.groupby("variable"):
             grp_sorted = grp.sort_values("timestep")
             obs_dict[str(var_name)] = [
-                round(float(v), precision) for v in grp_sorted["value"].values
+                float(v) for v in grp_sorted["value"].values
             ]
         result["observed"] = obs_dict
 
@@ -402,7 +395,7 @@ def _cmd_fit(
 # (comp_df, manifest, **kwargs) and returns a dict with "value" and
 # optionally "ci90" (a two-element list).
 
-def _metric_attack_rate(comp, manifest, precision=2, **kw):
+def _metric_attack_rate(comp, manifest, **kw):
     """Fraction of population ever infected (recovered + dead)."""
     # Find terminal compartments (R-like + D-like)
     total_cols = [c for c in comp.columns if c.endswith("_total")
@@ -421,28 +414,28 @@ def _metric_attack_rate(comp, manifest, precision=2, **kw):
     last_day = comp.groupby("sim_id")[s_col].last()
     attack = 1.0 - last_day / first_day
     return {
-        "median": round(float(attack.median()) * 100, precision),
-        "ci90": [round(float(attack.quantile(0.05)) * 100, precision),
-                 round(float(attack.quantile(0.95)) * 100, precision)],
+        "median": float(attack.median()) * 100,
+        "ci90": [float(attack.quantile(0.05)) * 100,
+                 float(attack.quantile(0.95)) * 100],
         "units": "percent",
     }
 
 
-def _metric_peak(comp, manifest, variable=None, precision=2, **kw):
+def _metric_peak(comp, manifest, variable=None, **kw):
     """Peak value of a variable across simulations."""
     var = variable or _default_var(comp, prefix="I")
     if var not in comp.columns:
         return {"value": None, "note": f"{var} not found"}
     peaks = comp.groupby("sim_id")[var].max()
     return {
-        "median": round(float(peaks.median()), precision),
-        "ci90": [round(float(peaks.quantile(0.05)), precision),
-                 round(float(peaks.quantile(0.95)), precision)],
+        "median": float(peaks.median()),
+        "ci90": [float(peaks.quantile(0.05)),
+                 float(peaks.quantile(0.95))],
         "variable": var,
     }
 
 
-def _metric_peak_date(comp, manifest, variable=None, precision=2, **kw):
+def _metric_peak_date(comp, manifest, variable=None, **kw):
     """Date of peak value."""
     var = variable or _default_var(comp, prefix="I")
     if var not in comp.columns:
@@ -463,7 +456,7 @@ def _metric_peak_date(comp, manifest, variable=None, precision=2, **kw):
     }
 
 
-def _metric_total_deaths(comp, manifest, precision=2, **kw):
+def _metric_total_deaths(comp, manifest, **kw):
     """Total deaths at end of simulation."""
     d_col = None
     for c in comp.columns:
@@ -474,15 +467,14 @@ def _metric_total_deaths(comp, manifest, precision=2, **kw):
         return {"value": None, "note": "no death compartment found"}
     final = comp.groupby("sim_id")[d_col].last()
     return {
-        "median": round(float(final.median()), precision),
-        "ci90": [round(float(final.quantile(0.05)), precision),
-                 round(float(final.quantile(0.95)), precision)],
+        "median": float(final.median()),
+        "ci90": [float(final.quantile(0.05)),
+                 float(final.quantile(0.95))],
         "variable": d_col,
     }
 
 
-def _metric_days_over(comp, manifest, variable=None, threshold=None,
-                       precision=0, **kw):
+def _metric_days_over(comp, manifest, variable=None, threshold=None, **kw):
     """Number of days the median of a variable exceeds a threshold."""
     if threshold is None:
         return {"value": None, "note": "threshold required (e.g. days_over:500)"}
@@ -499,16 +491,16 @@ def _metric_days_over(comp, manifest, variable=None, threshold=None,
     }
 
 
-def _metric_final_value(comp, manifest, variable=None, precision=2, **kw):
+def _metric_final_value(comp, manifest, variable=None, **kw):
     """Final value of a variable across simulations."""
     var = variable or _default_var(comp, prefix="I")
     if var not in comp.columns:
         return {"value": None, "note": f"{var} not found"}
     final = comp.groupby("sim_id")[var].last()
     return {
-        "median": round(float(final.median()), precision),
-        "ci90": [round(float(final.quantile(0.05)), precision),
-                 round(float(final.quantile(0.95)), precision)],
+        "median": float(final.median()),
+        "ci90": [float(final.quantile(0.05)),
+                 float(final.quantile(0.95))],
         "variable": var,
     }
 
@@ -539,7 +531,6 @@ def compare_bundles(
     bundles: Dict[str, str],
     metrics: Optional[List[str]] = None,
     variables: Optional[List[str]] = None,
-    precision: int = 2,
 ) -> Dict[str, Any]:
     """Compare multiple bundles on a set of metrics.
 
@@ -552,7 +543,6 @@ def compare_bundles(
         variables: Optional list of variable names to pass to variable-specific
             metrics (peak, peak_date, final_value).  If not provided, metrics
             will auto-detect the most relevant variable.
-        precision: Decimal places for rounding.
 
     Returns:
         A dict with structure ``{scenario_name: {metric_name: result}}``.
@@ -585,7 +575,7 @@ def compare_bundles(
         scenario_result = {}
         for metric_name, metric_param in parsed_metrics:
             fn = COMPARE_METRICS[metric_name]
-            kwargs = {"precision": precision}
+            kwargs = {}
             if variables:
                 kwargs["variable"] = variables[0]
             if metric_param is not None:

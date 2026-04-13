@@ -286,6 +286,9 @@ def build_model_from_config(
     # Build model
     if model_type in SUPPORTED_MODELS:
         model = load_predefined_model(model_type, **params)
+        # Apply population size from config (predefined models default to 100,000)
+        if "size" in pop_cfg and "name" not in pop_cfg:
+            model.population.Nk = np.array([pop_cfg["size"]], dtype=float)
     else:
         # Custom model
         compartments = model_cfg.get("compartments", [])

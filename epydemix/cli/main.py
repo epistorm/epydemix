@@ -304,8 +304,8 @@ def validate(config_path):
               help="End date for time slice (ISO format).")
 @click.option("--resample", default=None,
               help="Temporal resampling frequency (e.g. W, M).")
-@click.option("--round", "precision", type=int, default=2,
-              help="Decimal precision for numeric output.")
+@click.option("--round", "precision", type=int, default=6,
+              help="Decimal precision for numeric output (default: 6).")
 @click.option("--generation", type=int, default=None,
               help="Calibration generation (for posterior/fit commands).")
 @click.option("--format", "output_format", default="json",
@@ -343,7 +343,6 @@ def inspect_cmd(bundle_path, command, variables, quantiles, start, end,
         "start": start,
         "end": end,
         "resample": resample,
-        "precision": precision,
     }
     if quant_list is not None:
         kwargs["quantiles"] = quant_list
@@ -472,8 +471,8 @@ def defaults(disease):
 @click.option("--names", "-n", default=None,
               help="Comma-separated scenario names (same order as bundles). "
                    "Defaults to bundle directory names.")
-@click.option("--round", "precision", type=int, default=2,
-              help="Decimal precision for numeric output.")
+@click.option("--round", "precision", type=int, default=6,
+              help="Decimal precision for numeric output (default: 6).")
 @click.option("--baseline", "-b", default=None,
               help="Scenario name to use as baseline for delta computation.")
 def compare(bundles, metrics, variables, names, precision, baseline):
@@ -517,7 +516,6 @@ def compare(bundles, metrics, variables, names, precision, baseline):
             bundle_map,
             metrics=metric_list,
             variables=var_list,
-            precision=precision,
         )
     except Exception as e:
         _error_json("COMPARE_ERROR", str(e))

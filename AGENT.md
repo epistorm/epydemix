@@ -70,6 +70,8 @@ epydemix project calibration.epx -o projection.epx
 # diff, not a standalone config. Validation happens inside `epydemix project`.
 ```
 
+**Working directory:** All CLI commands resolve paths relative to the current working directory. Never use `cd` in shell commands — it persists across invocations and will silently break subsequent relative paths. Use absolute paths for all bundle inputs and outputs, or keep every command anchored to the project root.
+
 ## Available Models
 
 **Predefined:** SIR, SEIR, SIS — use `epydemix schema <MODEL>` to see their parameters.
@@ -211,7 +213,7 @@ The `manifest.json` is the bridge between the opaque Parquet files and the agent
 - `model`: compartments (alphabetically sorted list)
 - `population`: `demographic_groups` — ordered list of group names matching Parquet column order
 - `simulation`: n_simulations, start/end dates, n_timesteps
-- `parameters_used`: scalar parameter values (exact, unrounded — read from `manifest.json` directly if you need full precision; `epydemix inspect manifest` applies `--round 2` by default which can truncate small values like `0.006 → 0.01`)
+- `parameters_used`: scalar parameter values (exact, unrounded — `epydemix inspect manifest` skips rounding entirely so these are preserved at full precision)
 - `files`: for each Parquet file, the full column schema with dtypes and descriptions
 - `usage_hints`: instructions for CLI inspection and custom Python access
 - `provenance`: lineage information recording how the bundle was produced
@@ -295,6 +297,13 @@ pop.total_population  # int — sum of Nk
 
 ## Inspecting Results
 
+**Always read the manifest before inspecting anything else.** Bundle layouts differ by type: simulation bundles have `compartments.parquet` and `transitions.parquet`; calibration bundles have `posterior.parquet`, `trajectories.parquet`, `weights.parquet`, and `observed_data.parquet` — no `compartments.parquet`. The manifest tells you exactly which files exist, their column schemas, and what variables are available. Reading a file that isn't listed in the manifest will raise a `FileNotFoundError`.
+
+```bash
+# Do this first, every time, before any other inspect command or custom Python
+epydemix inspect <bundle> manifest
+```
+
 All inspect commands follow the pattern:
 
 ```bash
@@ -310,7 +319,7 @@ epydemix inspect <bundle> <command> [options]
 | `--end` | End date for time slice (inclusive, ISO) | `--end 2020-05-31` |
 | `--resample` | Temporal resampling before output | `--resample W` (weekly), `--resample M` (monthly) |
 | `-q, --quantiles` | Comma-separated quantile levels | `-q 0.05,0.5,0.95` |
-| `--round` | Decimal precision (default: 2) | `--round 0` |
+| `--round` | Decimal precision (default: 6). Use `--round 2` for compact output or `--round 10` to preserve very small values. | `--round 4` |
 | `--format` | Output format: `json` (default), `csv`, `tsv` | `--format csv` |
 
 `--start` and `--end` are applied **before** resampling. When omitted, the full simulation range is used. Variables default to all `_total` columns.
@@ -545,7 +554,7 @@ epydemix compare baseline.epx early.epx late.epx \
 | `-m, --metrics` | Comma-separated metrics to compute |
 | `-v, --variables` | Variable name for variable-specific metrics |
 | `-b, --baseline` | Scenario name for delta computation |
-| `--round` | Decimal precision |
+| `--round` | Decimal precision (default: 6) |
 
 When `--baseline` is provided, the output includes a `_deltas_vs_<name>` key with the difference (scenario minus baseline) for each numeric metric.
 
