@@ -12,6 +12,7 @@ Read this file before doing anything. Then follow these principles:
 - **Use Python for analysis beyond what the CLI offers.** The CLI covers common queries (quantiles, summary, peak). For anything else (attack rates, scenario comparisons, custom metrics), write Python against the Parquet files. The manifest gives you full column schemas.
 - **Store figures inside the bundle.** Save plots to `<bundle>/figures/` and register them with `add_figure_to_manifest`. See the Visualization Recipes section.
 - **Work step by step.** Discover → build config → validate → run → inspect → analyze → visualize.
+- **Never use `cd`.** Always use absolute paths. `cd` persists across shell invocations and silently corrupts all subsequent relative paths.
 
 ## Quick Start
 
@@ -70,7 +71,7 @@ epydemix project calibration.epx -o projection.epx
 # diff, not a standalone config. Validation happens inside `epydemix project`.
 ```
 
-**Working directory:** All CLI commands resolve paths relative to the current working directory. Never use `cd` in shell commands — it persists across invocations and will silently break subsequent relative paths. Use absolute paths for all bundle inputs and outputs, or keep every command anchored to the project root.
+**Working directory:** All CLI commands resolve paths relative to the current working directory. Use absolute paths for all bundle inputs and outputs.
 
 ## Available Models
 
