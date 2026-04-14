@@ -646,6 +646,12 @@ done
 epydemix compare scenario_*.epx -n Baseline,Early,Late -b Baseline
 ```
 
+### When scenarios have different compartment structures
+
+If comparing a baseline against a scenario that introduces new compartments (e.g., SIR vs. SIRV with vaccination), **use a custom model for all scenarios** — do not mix predefined and custom. Predefined models expand compartment labels to full words (`Susceptible_total`, `Infected_total`, etc.) while custom models use the names you define (`S_total`, `I_total`, etc.). Mixing the two gives different column names for the same variables in the Parquet output, which breaks shared analysis code.
+
+Config inheritance is not helpful in this situation: `compartments` and `transitions` are lists, so a child config would replace them entirely rather than extending them. Write standalone configs for each scenario instead.
+
 ## Visualization Recipes
 
 Epydemix does not produce figures — you write Python with matplotlib against the Parquet files. Figures are stored **inside the bundle** at `<bundle>/figures/` and registered in the manifest so they travel with the data.
