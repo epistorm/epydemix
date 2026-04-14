@@ -144,12 +144,16 @@ parameters:
   recovery_rate: 0.1
 
 # ── Population ───────────────────────────────────────────────────
+# Option A: named population dataset with real demographics and contact matrices
 population:
   name: "Italy"                     # an epydemix population dataset
   contact_layers: ["home", "work", "school", "community"]
-  # If omitted entirely, a single-group population of 100,000 is used.
-  # Use `size` to change the flat-population size (no named dataset needed):
-  size: 500000                       # optional; default 100,000
+# Option B: flat single-group population (no named dataset)
+# If omitted entirely, a single-group population of 100,000 is used.
+# population:
+#   size: 500000                    # default 100,000
+# NOTE: `size` is ignored when `name` is provided — named populations
+# have their own demographic sizes from the dataset.
 
 # ── Simulation ───────────────────────────────────────────────────
 simulation:
@@ -317,7 +321,7 @@ pop.Nk_names   # np.ndarray of group name strings, e.g. ['0-4', '5-19', '20-49',
                # This is the authoritative group order — matches Parquet column order
 pop.Nk         # np.ndarray of group population sizes (same order as Nk_names)
 pop.num_groups # int — number of demographic groups
-pop.total_population  # int — sum of Nk
+pop.total_population  # float — sum of Nk
 ```
 
 **Do not use `population.age_groups`, `population.demographic_groups`, or `population.size`** — these attributes do not exist. The manifest's `population.demographic_groups` list gives the same names and order as `Nk_names`.
@@ -418,7 +422,7 @@ There are three kinds:
   params: "recovery_rate"
 ```
 
-The `params` field can be a parameter expression:
+The `params` field can be a parameter expression combining parameter names with arithmetic:
 ```yaml
 # "Severe cases die at rate (mortality_rate * severity_factor)"
 - source: I_severe
@@ -426,6 +430,8 @@ The `params` field can be a parameter expression:
   kind: spontaneous
   params: "mortality_rate * severity_factor"
 ```
+
+Supported operators: `+`, `-`, `*`, `/`, `%`, `**` (power), comparisons, and boolean `and`/`or`/`not`. All parameter names in the expression must appear in the `parameters` section.
 
 **`mediated`** — the rate depends on contact with individuals in another compartment. Use for: infection/transmission. The force of infection is `rate × Σ(ContactMatrix × agents / population)`.
 
