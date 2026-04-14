@@ -457,16 +457,52 @@ The transition rate at each timestep is: `rate = min(doses / eligible_pop, 0.999
 | "X individuals vaccinated per day from a time-series schedule" | `scheduled`, schedule: `doses.csv` |
 | "doses distributed across S and R, only S benefit" | `scheduled`, schedule: `doses.csv`, eligible: `["S", "R"]` |
 
+**Modelling vaccine efficacy (leaky vaccine):** after moving individuals S → V via a
+`scheduled` transition, add a `mediated` transition from V to the exposed/infected
+compartment with a rate scaled by `(1 − VE)`. Define the reduced rate as a separate
+parameter so validation can catch typos.
+
+```yaml
+parameters:
+  transmission_rate: 0.022        # full susceptibility
+  reduced_transmission_rate: 0.004  # (1 - 0.80) × transmission_rate, 80% VE
+
+model:
+  type: custom
+  compartments: ["S", "I", "R", "V"]
+  transitions:
+    - {source: S, target: I, kind: mediated, params: ["transmission_rate", "I"]}
+    - {source: I, target: R, kind: spontaneous, params: "recovery_rate"}
+    - {source: S, target: V, kind: scheduled, schedule: doses.csv, eligible: ["S", "R"]}
+    - {source: V, target: I, kind: mediated, params: ["reduced_transmission_rate", "I"]}
+```
+
+Herd immunity threshold with a leaky vaccine: `HIT / VE` coverage is required to push
+effective R₀ below 1 (where `HIT = 1 − 1/R₀`).
+
 **Attack rate in vaccination models:** computing attack rate as
-`(S_initial − S_final) / N` is wrong when a scheduled `S → R` vaccination
+`(S_initial − S_final) / N` is wrong when a scheduled `S → V` vaccination
 transition is present — vaccinated individuals deplete S without being infected,
-inflating the count. Use cumulative infection flows from `transitions.parquet`:
+inflating the count. Use cumulative infection flows from `transitions.parquet`.
+
+For all-or-nothing vaccines (V individuals are fully immune, no V→I transition):
 
 ```python
 df = pd.read_parquet("results.epx/transitions.parquet",
                      columns=["sim_id", "S_to_I_total"])
 attack_rate = df.groupby("sim_id")["S_to_I_total"].sum() / N * 100
 ```
+
+For **leaky vaccines** (V→I breakthrough transition present), add both flows:
+
+```python
+df = pd.read_parquet("results.epx/transitions.parquet",
+                     columns=["sim_id", "S_to_I_total", "V_to_I_total"])
+attack_rate = (df.groupby("sim_id")[["S_to_I_total", "V_to_I_total"]].sum().sum(axis=1)
+               / N * 100)
+```
+
+Omitting `V_to_I_total` in a leaky model silently undercounts the true attack rate.
 
 For models with multiple infectious classes, add one mediated transition per infectious compartment:
 ```yaml
