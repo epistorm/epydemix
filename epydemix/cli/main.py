@@ -269,16 +269,22 @@ def project(calibration_bundle, config_path, output):
 def validate(config_path):
     """Validate a config file without running it.
 
+    Automatically detects calibration configs (those with a 'calibration'
+    section) and validates the calibration-specific fields as well.
+
     Prints validation result as JSON to stdout.
     """
-    from .config import load_config, validate_config
+    from .config import load_config, validate_calibration_config, validate_config
 
     try:
         config = load_config(config_path)
     except Exception as e:
         _error_json("CONFIG_LOAD_ERROR", str(e))
 
-    result = validate_config(config)
+    if "calibration" in config:
+        result = validate_calibration_config(config)
+    else:
+        result = validate_config(config)
     _print_json(result)
 
     if not result["valid"]:

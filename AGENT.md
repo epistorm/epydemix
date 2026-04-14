@@ -571,7 +571,7 @@ parameters:
   beta_mild: 0.3
   beta_severe: 0.1
   beta_hosp: 0.05
-  sigma: 0.33             # 1/3 day incubation
+  sigma: 0.33             # rate = 1/3 per day → ~3 day mean incubation
   p_severe: 0.15          # 15% of cases are severe
   gamma_mild: 0.14        # ~7 day recovery
   hosp_rate: 0.2          # ~5 day progression to hospital
@@ -873,7 +873,7 @@ calibration:
   observed_data: observed.csv   # path to CSV, or inline list
   observed_column: cases        # column name in CSV (auto-detected if 2-column CSV)
   target_variable: Infected_total  # model variable to compare against observed data
-  distance: rmse                # rmse | mae | wmape | mape
+  distance: rmse                # rmse | mae | wmape | mape | ae
   # Strategy-specific settings:
   num_particles: 500
   num_generations: 10
