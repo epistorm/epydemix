@@ -166,6 +166,12 @@ initial_conditions:
   I: 0.0005
   R: 0.0
 
+# NOTE — compartment name convention for initial_conditions:
+#   custom models  → use the short names you defined (S, I, R, ...)
+#   predefined models (SIR, SEIR, SIS) → use full words:
+#     Susceptible, Exposed, Infected, Recovered
+# Using short names in a predefined-model config will raise a validation error.
+
 # ── Interventions (optional) ─────────────────────────────────────
 # Reduce contact on a specific layer for a time window.
 interventions:
