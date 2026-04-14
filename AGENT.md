@@ -324,7 +324,7 @@ pop.total_population  # int — sum of Nk
 
 ## Inspecting Results
 
-**Always read the manifest before inspecting anything else.** Bundle layouts differ by type: simulation bundles have `compartments.parquet` and `transitions.parquet`; calibration bundles have `posterior.parquet`, `trajectories.parquet`, `weights.parquet`, and `observed_data.parquet` — no `compartments.parquet`. The manifest tells you exactly which files exist, their column schemas, and what variables are available. Reading a file that isn't listed in the manifest will raise a `FileNotFoundError`.
+**Always read the manifest before inspecting anything else.** Bundle layouts differ by type: simulation bundles have `compartments.parquet` and `transitions.parquet`; calibration bundles have `posterior.parquet`, `distances.parquet`, `trajectories.parquet`, `weights.parquet`, and `observed_data.parquet` — no `compartments.parquet`. The manifest tells you exactly which files exist, their column schemas, and what variables are available. Reading a file that isn't listed in the manifest will raise a `FileNotFoundError`.
 
 ```bash
 # Do this first, every time, before any other inspect command or custom Python
@@ -406,7 +406,7 @@ Naming conventions: short, uppercase names. Use suffixes like `_mild`, `_severe`
 
 ### Transition kinds
 
-There are exactly two kinds:
+There are three kinds:
 
 **`spontaneous`** — individuals leave the source compartment at a fixed rate, independent of other compartments. Use for: recovery, disease progression, death, waning immunity.
 
@@ -540,7 +540,7 @@ Use these rules to translate natural-language disease descriptions into transiti
 - Every parameter referenced in `transitions` must appear in the `parameters` section.
 - Every compartment referenced in `transitions` must appear in `compartments`.
 - `initial_conditions` must cover all compartments and fractions must sum to 1.0.
-- Only `spontaneous` and `mediated` kinds are available via config.
+- Only `spontaneous`, `mediated`, and `scheduled` kinds are available via config.
 - Do not create transitions where source == target.
 
 ### Worked example: SEIRD with hospitalization and waning immunity
@@ -939,11 +939,13 @@ epydemix inspect calibration.epx fit -v Infected_total -q 0.05,0.5,0.95
 ```
 calibration.epx/
   manifest.json
-  posterior.parquet     # parameter samples per generation
-  distances.parquet     # distance values per generation
-  trajectories.parquet  # selected trajectories (last generation)
-  config.yaml           # config that produced this run
-  figures/              # for agent-produced visualizations
+  posterior.parquet      # parameter samples per generation
+  distances.parquet      # distance values per generation
+  trajectories.parquet   # selected trajectories (last generation)
+  weights.parquet        # particle weights per generation (for posterior sampling)
+  observed_data.parquet  # observed data used for calibration
+  config.yaml            # config that produced this run
+  figures/               # for agent-produced visualizations
 ```
 
 ### Calibration workflow
