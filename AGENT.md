@@ -95,6 +95,8 @@ epydemix defaults covid19      # full detail for one disease
 
 The JSON Schema output can be used to validate parameter values before running. Each parameter includes `minimum`, `maximum`, `default`, and `description` fields.
 
+**Warning:** disease preset `transmission_rate` values are calibrated assuming homogeneous mixing. When using a named population with a real contact matrix, the effective R₀ will be much higher than intended. Treat preset values as starting points only and sanity-check epidemic dynamics (peak timing, attack rate) before drawing conclusions.
+
 ## Config Reference
 
 The config is a YAML or JSON file — the single artifact you construct to run a simulation.
@@ -204,6 +206,8 @@ results.epx/
 ```
 
 Column naming convention: `{Compartment}_{group}` for age-group-specific columns, `{Compartment}_total` for the sum across all groups. Transition columns follow the same pattern: `{Source}_to_{Target}_{group}` and `{Source}_to_{Target}_total`.
+
+**Predefined vs custom model names:** predefined models (SIR, SEIR, SIS) expand compartment labels to full words — `Susceptible_total`, `Infected_total`, `Exposed_total`, `Recovered_total`. Custom models use the short names you define in the config — `S_total`, `I_total`, etc. Always verify column names with `epydemix inspect <bundle> manifest` before writing inspect commands or Parquet queries against a predefined-model bundle.
 
 **Note:** `parameters.parquet` contains only `sim_id` for plain `run` and `project` commands (parameters are fixed, not varied). It is populated with sampled parameter values only for `calibrate` runs.
 
@@ -436,6 +440,17 @@ The transition rate at each timestep is: `rate = min(doses / eligible_pop, 0.999
 |---|---|
 | "X individuals vaccinated per day from a time-series schedule" | `scheduled`, schedule: `doses.csv` |
 | "doses distributed across S and R, only S benefit" | `scheduled`, schedule: `doses.csv`, eligible: `["S", "R"]` |
+
+**Attack rate in vaccination models:** computing attack rate as
+`(S_initial − S_final) / N` is wrong when a scheduled `S → R` vaccination
+transition is present — vaccinated individuals deplete S without being infected,
+inflating the count. Use cumulative infection flows from `transitions.parquet`:
+
+```python
+df = pd.read_parquet("results.epx/transitions.parquet",
+                     columns=["sim_id", "S_to_I_total"])
+attack_rate = df.groupby("sim_id")["S_to_I_total"].sum() / N * 100
+```
 
 For models with multiple infectious classes, add one mediated transition per infectious compartment:
 ```yaml
