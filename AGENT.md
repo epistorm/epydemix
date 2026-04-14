@@ -97,6 +97,22 @@ The JSON Schema output can be used to validate parameter values before running. 
 
 **Warning:** disease preset `transmission_rate` values are calibrated assuming homogeneous mixing. When using a named population with a real contact matrix, the effective R₀ will be much higher than intended. Treat preset values as starting points only and sanity-check epidemic dynamics (peak timing, attack rate) before drawing conclusions.
 
+To find a transmission_rate that achieves a target R₀ with a named population, compute the spectral radius of the combined contact matrix:
+
+```python
+from epydemix.population import load_epydemix_population
+import numpy as np
+
+pop = load_epydemix_population("Italy")
+layers = ["home", "work", "school", "community"]
+C = sum(pop.contact_matrices[l] for l in layers)
+rho = np.max(np.abs(np.linalg.eigvals(C)))
+# transmission_rate = R0_target * recovery_rate / rho
+print(rho)   # e.g. ~14 for Italy — preset value of 0.3 gives R0 ≈ 19
+```
+
+For Italy with all four contact layers, ρ ≈ 14. Influenza (R₀ ≈ 1.3–1.5, recovery_rate 0.22) requires transmission_rate ≈ 0.020–0.024. Do this calculation before running any named-population simulation with a preset parameter value.
+
 ## Config Reference
 
 The config is a YAML or JSON file — the single artifact you construct to run a simulation.
@@ -555,7 +571,7 @@ epydemix compare baseline.epx early.epx late.epx \
 
 | Metric | Description |
 |---|---|
-| `attack_rate` | % of population ever infected (based on susceptible depletion) |
+| `attack_rate` | % of population ever infected (based on susceptible depletion). **Wrong for vaccination models** — vaccinated individuals also deplete S, inflating the count. Use `transitions.parquet` directly instead (see "Attack rate in vaccination models" under Building Custom Models). |
 | `peak` | Peak value of a variable (default: first I-like _total column) |
 | `peak_date` | Date of peak value |
 | `total_deaths` | Final value of the death compartment |
