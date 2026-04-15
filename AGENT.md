@@ -154,6 +154,11 @@ population:
 #   size: 500000                    # default 100,000
 # NOTE: `size` is ignored when `name` is provided — named populations
 # have their own demographic sizes from the dataset.
+#
+# NOTE: named population data is fetched from GitHub at runtime. When running
+# multiple commands in parallel (e.g. calibrating several countries at once),
+# each process makes its own HTTP request — transient failures are possible
+# and a simple retry is sufficient.
 
 # ── Simulation ───────────────────────────────────────────────────
 simulation:
