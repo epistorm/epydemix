@@ -360,6 +360,16 @@ epydemix inspect <bundle> <command> [options]
 
 `--start` and `--end` are applied **before** resampling. When omitted, the full simulation range is used. Variables default to all `_total` columns.
 
+**When calling `inspect` from Python via subprocess**, use long-form flags so kwarg names map cleanly to `--flag` style. The one exception in the table above is `-q` — its long form is `--quantiles`:
+
+```python
+result = json.loads(subprocess.check_output([
+    "epydemix", "inspect", "results.epx", "quantiles",
+    "--variables", "H_total",
+    "--quantiles", "0.05,0.5,0.95",
+], stderr=subprocess.DEVNULL))
+```
+
 ### Commands
 
 **manifest** — return the full manifest JSON.
