@@ -1,6 +1,6 @@
 # Making Computational Modeling Libraries Agent-Friendly: Lessons from Epydemix
 
-## v1.1, 13/4/2026
+## Ciro Cattuto, v1.1, 13/4/2026
 
 ## The general problem
 
