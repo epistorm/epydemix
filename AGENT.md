@@ -165,7 +165,7 @@ simulation:
   start_date: "2020-01-01"         # ISO date, required
   end_date: "2020-06-30"           # ISO date, required
   n_simulations: 100               # default: 100
-  dt: 1.0                          # timestep in days, default: 1.0
+  dt: 1.0                          # integration timestep in days (see below)
 
 # ── Initial conditions ───────────────────────────────────────────
 # Fractions of the population in each compartment. Must sum to 1.0.
@@ -201,6 +201,8 @@ overrides:
 **Required sections:** `model`, `simulation` (with `start_date` and `end_date`).
 
 **Optional sections:** `parameters` (defaults used if omitted), `population`, `initial_conditions`, `interventions`, `overrides`, `base`.
+
+**Simulation timestep (`dt`).** The `simulation.dt` field controls the integration timestep in days. The default is `1.0` (one day). Smaller values (e.g. `0.5`, `0.25`) increase accuracy at the cost of speed — this matters for models with fast dynamics (short latent periods, high transmission rates) where daily steps can overshoot transitions. Larger values (e.g. `2.0`) are rarely useful and risk numerical instability. The timestep applies uniformly to `run`, `calibrate`, and `project` commands. Output is always resampled to daily resolution regardless of `dt`, so the choice of timestep does not affect the shape of the output DataFrame — only the accuracy of the underlying integration.
 
 Custom models can also use `kind: scheduled` transitions (see Building Custom Models) to drive compartment flows from a daily dose CSV — useful for vaccination campaigns.
 
@@ -745,7 +747,7 @@ calibration:
       high: 0.3
   observed_data: observed.csv   # path to CSV, or inline list
   observed_column: cases        # column name in CSV (auto-detected if 2-column CSV)
-  target_variable: Infected_total  # model variable to compare against observed data
+  target_variable: Infected_total  # compartment or transition column to compare against observed data
   distance: rmse                # rmse | mae | wmape | mape | ae
   # Strategy-specific settings:
   num_particles: 500
@@ -753,6 +755,10 @@ calibration:
 ```
 
 Parameters listed in `calibration.priors` are sampled from the specified distributions during calibration. Parameters in the `parameters` section that are NOT in `priors` are held fixed. Every parameter the model needs must appear in one place or the other.
+
+The `target_variable` field selects which model output to compare against observed data. It can reference either a compartment column (e.g. `Infected_total` for prevalence) or a transition column (e.g. `Susceptible_to_Infected_total` for incidence). Calibrating against incidence is the more common real-world scenario — observed data is typically reported as new cases, hospitalizations, or deaths per time step rather than total counts in a compartment. If `target_variable` is omitted, it defaults to the first `I`-like `_total` compartment column.
+
+**Limitation: initial conditions are not calibratable through the config.** The ABC sampler treats every prior as an independent knob — it has no constraint mechanism. Compartment initial conditions are inherently constrained (their fractions must sum to 1), which means the sampler cannot explore the feasible region efficiently: it would propose combinations where fractions exceed 1, the distance function would reject them, but the sampler would learn nothing about *why* and keep wasting particles. Even calibrating a single compartment's IC is problematic — if `Infected` is sampled but `Susceptible` is fixed, the total population is no longer conserved. For these reasons, initial conditions should be set as fixed values in the `initial_conditions` section. If you need to explore sensitivity to initial conditions, use the Python API to write a custom simulation function that parameterizes the IC (e.g., as a single `I0` parameter) and reconstructs the full IC dict with proper normalization (`S = 1 - I0 - ...`) on every call.
 
 ### Observed data
 

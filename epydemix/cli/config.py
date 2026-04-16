@@ -616,28 +616,32 @@ def _make_simulation_function(
             initial_conditions_dict=ic,
         )
 
-        # Extract target variable
+        # Extract target variable — search compartments first, then
+        # transitions (e.g. "Susceptible_to_Infected_total" for incidence).
         var = target
         if var is None:
-            # Auto-detect: first I-like _total column
+            # Auto-detect: first I-like _total compartment column
             for key in results.compartments:
                 if key.endswith("_total") and key.split("_")[0].startswith("I"):
                     var = key
                     break
             if var is None:
-                # Fall back to first _total
+                # Fall back to first _total compartment
                 for key in results.compartments:
                     if key.endswith("_total"):
                         var = key
                         break
 
-        if var is None or var not in results.compartments:
-            raise ValueError(
-                f"Cannot find target variable '{var}' in simulation output. "
-                f"Available: {list(results.compartments.keys())}"
-            )
+        if var is not None and var in results.compartments:
+            return {"data": results.compartments[var]}
+        if var is not None and var in results.transitions:
+            return {"data": results.transitions[var]}
 
-        return {"data": results.compartments[var]}
+        all_keys = list(results.compartments.keys()) + list(results.transitions.keys())
+        raise ValueError(
+            f"Cannot find target variable '{var}' in simulation output. "
+            f"Available: {all_keys}"
+        )
 
     return sim_fn
 

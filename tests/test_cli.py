@@ -802,6 +802,22 @@ class TestCalibrateCLI:
         ])
         assert result.exit_code == 0
 
+    def test_calibrate_against_transition(self, tmp_path):
+        """Calibration can target a transition column (incidence)."""
+        cfg = _calibration_config()
+        cfg["calibration"]["target_variable"] = "Susceptible_to_Infected_total"
+        config_path = _write_yaml(tmp_path, cfg, "cal_trans.yaml")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "calibrate", config_path,
+            "-o", str(tmp_path / "cal_trans.epx"),
+        ])
+        if result.exit_code != 0:
+            print("STDERR:", result.output)
+        assert result.exit_code == 0
+        assert (tmp_path / "cal_trans.epx" / "posterior.parquet").exists()
+
 
 # ---------------------------------------------------------------------------
 # Projection config & CLI
