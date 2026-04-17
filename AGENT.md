@@ -533,6 +533,16 @@ attack_rate = (df.groupby("sim_id")[["S_to_I_total", "V_to_I_total"]].sum().sum(
 
 Omitting `V_to_I_total` in a leaky model silently undercounts the true attack rate.
 
+**Multiple mediated transitions with the same source→target (e.g., S→E via I_mild and S→E via I_severe):** the framework records each mediated transition as a separate flow and sums them into a single `S_to_E_total` column. With two S→E transitions, `S_to_E_total` is approximately 2× the actual infection flow — using it for attack rate gives a value near 200% instead of the true figure. Use S depletion instead (valid when no S→V vaccination is present):
+
+```python
+comp = pd.read_parquet("results.epx/compartments.parquet",
+                       columns=["sim_id", "date", "S_total"])
+S0 = comp.groupby("sim_id")["S_total"].first()
+Sf = comp.groupby("sim_id")["S_total"].last()
+attack_rate = (S0 - Sf) / N * 100
+```
+
 For models with multiple infectious classes, add one mediated transition per infectious compartment:
 ```yaml
 - source: S
