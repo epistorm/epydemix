@@ -224,6 +224,8 @@ Chains are supported (child → parent → grandparent, up to 10 levels). The `b
 
 This is the recommended way to set up scenario sweeps: write one complete base config, then one small overlay per scenario. Validate and run each overlay normally — the inheritance is resolved at load time and is transparent to the rest of the pipeline.
 
+**Transitions lists cannot be partially overridden.** Lists replace entirely — the merge engine has no way to match which element you intend to modify (list entries have no unique key). This applies even when the compartment structure is identical and you only want to change one field inside one transition (e.g., swapping the `schedule` CSV path across vaccination scenarios). In that case, redeclare the full `transitions` list in each child config. The `parameters` dict *does* merge by key, so fixed numeric parameters can still be overridden without repetition.
+
 ## Output Reference
 
 ### Bundle structure
@@ -508,6 +510,20 @@ model:
 
 Herd immunity threshold with a leaky vaccine: `HIT / VE` coverage is required to push
 effective R₀ below 1 (where `HIT = 1 − 1/R₀`).
+
+**Vaccine waning (endemic and multi-season models):** without a `V → S` spontaneous transition, vaccine-induced immunity is permanent. In endemic or booster-comparison scenarios this collapses the difference between campaigns — vaccinated individuals never re-enter the susceptible pool regardless of time elapsed. Add a waning transition to make booster comparisons meaningful:
+
+```yaml
+- source: V
+  target: S
+  kind: spontaneous
+  params: "vaccine_waning_rate"   # e.g. 0.005556 for ~6-month VE duration
+
+parameters:
+  vaccine_waning_rate: 0.005556   # 1/180 days
+```
+
+Natural immunity (`R → S`) and vaccine immunity (`V → S`) waning are independent parameters — typical values differ (natural: ~9 months, vaccine: ~4–8 months for COVID mRNA).
 
 **Attack rate in vaccination models:** computing attack rate as
 `(S_initial − S_final) / N` is wrong when a scheduled `S → V` vaccination
