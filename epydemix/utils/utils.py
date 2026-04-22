@@ -10,13 +10,16 @@ from evalidate import Expr, base_eval_model
 
 try:
     from numba import njit
+
     _NUMBA_AVAILABLE = True
 except ImportError:
     _NUMBA_AVAILABLE = False
+
     # Transparent fallback: @njit becomes a no-op decorator
     def njit(*args, **kwargs):
         def decorator(fn):
             return fn
+
         return decorator if args and callable(args[0]) else decorator
 
 
