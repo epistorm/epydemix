@@ -23,6 +23,7 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "evalidate>=2.0.3",
+        "numba>=0.57.0",
         "matplotlib>=3.7.3",
         "numpy>=1.23.5",
         "pandas>=2.0.3",

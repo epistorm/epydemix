@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+* [Numba](https://numba.pydata.org/) JIT compilation for the multinomial probability computation (`_multinomial_probs` in `utils.py`). The probability kernel is compiled at import time via `@njit`, eliminating interpreter overhead on the hot simulation path.
+* Added `numba>=0.57.0` as a dependency in `requirements.txt`, `setup.py`, and `pyproject.toml`.
+
+### Changed
+
+* Optimized `compute_spontaneous_transition_rate()` and `compute_mediated_transition_rate()` in `epimodel.py`: when the rate expression is a plain parameter name that already exists in the parameters dictionary, the value is looked up directly instead of triggering a full `evaluate()` call with a `deepcopy` of the parameter environment. This avoids unnecessary copying on the hot simulation path.
+
+---
+
 ## [1.1.0] - 2026-02-24
 
 ### Changed
