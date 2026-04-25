@@ -181,6 +181,29 @@ initial_conditions:
 #     Susceptible, Exposed, Infected, Recovered
 # Using short names in a predefined-model config will raise a validation error.
 
+# Per-group initial conditions (age-structured populations):
+# Any compartment value can be replaced with a dict to set different
+# fractions for specific demographic groups. Use "default" for all
+# groups not explicitly listed (omitting "default" means 0.0 for those
+# groups). Scalars and dicts can be mixed freely in the same block.
+#
+# Example: 75% of the 65+ age group starts immune, all others susceptible:
+#
+# initial_conditions:
+#   Susceptible:
+#     default: 1.0     # all groups fully susceptible …
+#     "65+": 0.25      # … except 65+: only 25% remain susceptible
+#   Exposed: 0.0
+#   Infected: 0.0000016825
+#   Recovered:
+#     default: 0.0
+#     "65+": 0.75
+#
+# Valid group names are those returned by `epydemix inspect <bundle> manifest`
+# under population.demographic_groups (e.g. "0-4", "5-19", "20-49", "50-64",
+# "65+" for Italy). An unknown group name raises a RUNTIME_ERROR with the list
+# of valid names.
+
 # ── Interventions (optional) ─────────────────────────────────────
 # Reduce contact on a specific layer for a time window.
 interventions:

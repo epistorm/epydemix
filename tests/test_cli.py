@@ -10,7 +10,7 @@ from click.testing import CliRunner
 
 from epydemix import load_predefined_model
 from epydemix.cli.main import cli
-from epydemix.cli.config import load_config, validate_config, build_model_from_config
+from epydemix.cli.config import load_config, validate_config, build_model_from_config, build_initial_conditions
 from epydemix.io.bundle import save_bundle
 from epydemix.population import Population
 
@@ -153,6 +153,120 @@ class TestBuildModel:
         assert "Susceptible" in model.compartments
         assert "Infected" in model.compartments
         assert "Recovered" in model.compartments
+
+
+# ---------------------------------------------------------------------------
+# build_initial_conditions tests
+# ---------------------------------------------------------------------------
+
+def _multi_group_model():
+    """SIR model with a 3-group age-structured population for IC tests."""
+    model = load_predefined_model("SIR", transmission_rate=0.3, recovery_rate=0.1)
+    pop = Population()
+    pop.add_population(
+        [10_000, 20_000, 5_000],
+        Nk_names=["young", "adult", "elderly"],
+    )
+    pop.add_contact_matrix(np.ones((3, 3)))
+    model.set_population(pop)
+    return model
+
+
+class TestBuildInitialConditions:
+
+    def test_scalar_broadcast(self):
+        """Scalar fraction is applied uniformly to every group (existing behaviour)."""
+        model = _multi_group_model()
+        cfg = {"initial_conditions": {"Susceptible": 0.9, "Infected": 0.1, "Recovered": 0.0}}
+        ic = build_initial_conditions(cfg, model)
+        np.testing.assert_allclose(ic["Susceptible"], [9_000, 18_000, 4_500])
+        np.testing.assert_allclose(ic["Infected"],    [1_000,  2_000,   500])
+
+    def test_dict_default_only_equals_scalar(self):
+        """A dict with only a 'default' key produces the same result as a scalar."""
+        model = _multi_group_model()
+        cfg_scalar = {"initial_conditions": {"Susceptible": 0.8, "Recovered": 0.2}}
+        cfg_dict   = {"initial_conditions": {"Susceptible": {"default": 0.8}, "Recovered": {"default": 0.2}}}
+        ic_s = build_initial_conditions(cfg_scalar, model)
+        ic_d = build_initial_conditions(cfg_dict, model)
+        np.testing.assert_allclose(ic_s["Susceptible"], ic_d["Susceptible"])
+        np.testing.assert_allclose(ic_s["Recovered"],   ic_d["Recovered"])
+
+    def test_dict_group_override(self):
+        """Named group gets its specific fraction; others get the default."""
+        model = _multi_group_model()
+        cfg = {
+            "initial_conditions": {
+                "Susceptible": {"default": 1.0, "elderly": 0.25},
+                "Recovered":   {"default": 0.0, "elderly": 0.75},
+                "Infected": 0.0,
+            }
+        }
+        ic = build_initial_conditions(cfg, model)
+        # young and adult: fully susceptible
+        np.testing.assert_allclose(ic["Susceptible"][:2], [10_000, 20_000])
+        # elderly: 25 % susceptible
+        np.testing.assert_allclose(ic["Susceptible"][2], 1_250)
+        # elderly: 75 % recovered
+        np.testing.assert_allclose(ic["Recovered"][2], 3_750)
+        # young and adult: no recovered
+        np.testing.assert_allclose(ic["Recovered"][:2], [0, 0])
+
+    def test_dict_no_default_key_means_zero(self):
+        """Omitting 'default' leaves unlisted groups at 0.0."""
+        model = _multi_group_model()
+        cfg = {"initial_conditions": {"Recovered": {"elderly": 0.5}}}
+        ic = build_initial_conditions(cfg, model)
+        np.testing.assert_allclose(ic["Recovered"][:2], [0, 0])
+        np.testing.assert_allclose(ic["Recovered"][2], 2_500)
+
+    def test_mixed_scalar_and_dict(self):
+        """Scalar and dict entries can coexist in the same initial_conditions block."""
+        model = _multi_group_model()
+        cfg = {
+            "initial_conditions": {
+                "Infected": 0.01,                        # scalar
+                "Recovered": {"default": 0.0, "elderly": 0.5},  # dict
+                "Susceptible": {"default": 0.99, "elderly": 0.49},
+            }
+        }
+        ic = build_initial_conditions(cfg, model)
+        np.testing.assert_allclose(ic["Infected"], [100, 200, 50])
+        np.testing.assert_allclose(ic["Recovered"][2], 2_500)
+        np.testing.assert_allclose(ic["Susceptible"][:2], [9_900, 19_800])
+
+    def test_unknown_group_name_raises(self):
+        """An unrecognised group key raises ValueError with the name in the message."""
+        model = _multi_group_model()
+        cfg = {"initial_conditions": {"Recovered": {"default": 0.0, "typo_group": 0.5}}}
+        with pytest.raises(ValueError, match="typo_group"):
+            build_initial_conditions(cfg, model)
+
+    def test_validate_config_catches_non_numeric_group_value(self):
+        """validate_config flags non-numeric values inside a dict IC."""
+        cfg = dict(MINIMAL_CONFIG)
+        cfg["initial_conditions"] = {
+            "Susceptible": {"default": 0.99, "young": "bad_value"},
+            "Infected": 0.01,
+        }
+        result = validate_config(cfg)
+        assert not result["valid"] or any("must be a number" in e for e in result["errors"])
+
+    def test_flat_population_scalar_unaffected(self):
+        """Flat (single-group) populations still work with plain scalar fractions."""
+        model = build_model_from_config(MINIMAL_CONFIG)
+        cfg = {"initial_conditions": {"Susceptible": 0.99, "Infected": 0.01, "Recovered": 0.0}}
+        ic = build_initial_conditions(cfg, model)
+        assert ic["Susceptible"][0] == pytest.approx(99_000)  # default pop = 100 000
+        assert ic["Infected"][0] == pytest.approx(1_000)
+
+    def test_case_insensitive_compartment_name(self):
+        """Compartment names in initial_conditions are matched case-insensitively."""
+        model = _multi_group_model()
+        cfg = {"initial_conditions": {"susceptible": 0.9, "infected": 0.1, "recovered": 0.0}}
+        ic = build_initial_conditions(cfg, model)
+        assert "Susceptible" in ic
+        assert "Infected" in ic
 
 
 # ---------------------------------------------------------------------------

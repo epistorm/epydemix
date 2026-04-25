@@ -180,6 +180,15 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
             "No 'initial_conditions' section — will use default "
             "(small fraction in first infectious compartment)"
         )
+    else:
+        ic_cfg = config["initial_conditions"]
+        for comp, val in ic_cfg.items():
+            if isinstance(val, dict):
+                for k, v in val.items():
+                    if k != "default" and not isinstance(v, (int, float)):
+                        errors.append(
+                            f"initial_conditions[{comp!r}][{k!r}] must be a number"
+                        )
 
     return {
         "valid": len(errors) == 0,
@@ -366,11 +375,39 @@ def build_model_from_config(
     return model
 
 
+def _resolve_compartment(
+    name: str, compartments: list
+) -> Optional[str]:
+    """Return the canonical compartment name matching *name* (case-insensitive).
+
+    Returns ``None`` if no match is found.
+    """
+    if name in compartments:
+        return name
+    name_lower = name.lower()
+    for real in compartments:
+        if real.lower() == name_lower:
+            return real
+    return None
+
+
 def build_initial_conditions(
     config: Dict[str, Any],
     model: EpiModel,
 ) -> Optional[Dict[str, np.ndarray]]:
     """Build initial conditions dict from config.
+
+    Each compartment entry in ``initial_conditions`` can be either:
+
+    * A **scalar** fraction (current behaviour) — the same fraction is applied
+      to every demographic group: ``ic[comp] = Nk * fraction``.
+    * A **dict** for per-group control.  Use the ``"default"`` key for groups
+      not explicitly listed (defaults to ``0.0`` when absent).  Every other key
+      must be a group name from ``population.Nk_names``::
+
+          Recovered:
+            default: 0.0
+            "65+": 0.75   # 75 % of the 65+ group starts immune
 
     Args:
         config: The full config dict.
@@ -383,19 +420,32 @@ def build_initial_conditions(
     if not ic_cfg:
         return None
 
-    n_groups = len(model.population.Nk)
-    pop_sizes = model.population.Nk
+    pop_sizes = np.array(model.population.Nk, dtype=float)
+    group_names = list(model.population.Nk_names)
+    n_groups = len(pop_sizes)
 
     ic_dict = {}
-    for comp_name, fraction in ic_cfg.items():
-        if comp_name in model.compartments:
-            ic_dict[comp_name] = np.array(pop_sizes) * fraction
+    for comp_name, value in ic_cfg.items():
+        resolved = _resolve_compartment(comp_name, model.compartments)
+        if resolved is None:
+            continue
+
+        if isinstance(value, dict):
+            default_frac = float(value.get("default", 0.0))
+            fracs = np.full(n_groups, default_frac)
+            for group_key, frac in value.items():
+                if group_key == "default":
+                    continue
+                if group_key not in group_names:
+                    valid = ", ".join(f'"{g}"' for g in group_names)
+                    raise ValueError(
+                        f"initial_conditions[{comp_name!r}]: unknown group "
+                        f"{group_key!r}. Valid groups: {valid}"
+                    )
+                fracs[group_names.index(group_key)] = float(frac)
+            ic_dict[resolved] = pop_sizes * fracs
         else:
-            # Try to find a match (handle case differences)
-            for real_name in model.compartments:
-                if real_name.lower() == comp_name.lower():
-                    ic_dict[real_name] = np.array(pop_sizes) * fraction
-                    break
+            ic_dict[resolved] = pop_sizes * float(value)
 
     return ic_dict if ic_dict else None
 
