@@ -168,11 +168,17 @@ simulation:
   dt: 1.0                          # integration timestep in days (see below)
 
 # ── Initial conditions ───────────────────────────────────────────
-# Fractions of the population in each compartment. Must sum to 1.0.
+# Each compartment value can be a fraction (float) or an absolute count (int).
+# All compartments together must account for the full population.
+#
+# float scalar → fraction of total population, distributed proportionally
+# int scalar   → absolute number of individuals, distributed proportionally
+# dict         → per-group control (see below); add `unit: count` for counts
+#
 initial_conditions:
-  S: 0.999
+  S: 0.999      # float → fraction
   E: 0.0005
-  I: 0.0005
+  I: 50         # int → 50 individuals distributed proportionally across groups
   R: 0.0
 
 # NOTE — compartment name convention for initial_conditions:
@@ -183,11 +189,13 @@ initial_conditions:
 
 # Per-group initial conditions (age-structured populations):
 # Any compartment value can be replaced with a dict to set different
-# fractions for specific demographic groups. Use "default" for all
-# groups not explicitly listed (omitting "default" means 0.0 for those
-# groups). Scalars and dicts can be mixed freely in the same block.
+# values for specific demographic groups. Use "default" for all groups
+# not explicitly listed (omitting "default" means 0.0 for those groups).
+# Add an optional `unit` key ("fraction" or "count", default "fraction")
+# to control how values are interpreted. Scalars and dicts can be mixed
+# freely in the same block.
 #
-# Example: 75% of the 65+ age group starts immune, all others susceptible:
+# Example: 75% of the 65+ age group starts immune (fraction mode, default):
 #
 # initial_conditions:
 #   Susceptible:
@@ -198,6 +206,18 @@ initial_conditions:
 #   Recovered:
 #     default: 0.0
 #     "65+": 0.75
+#
+# Example: seed with exact individual counts per group (count mode):
+#
+# initial_conditions:
+#   Susceptible: 0.999
+#   Exposed: 0.0
+#   Infected:
+#     unit: count
+#     default: 0
+#     "20-49": 3
+#     "65+": 2
+#   Recovered: 0.0
 #
 # Valid group names are those returned by `epydemix inspect <bundle> manifest`
 # under population.demographic_groups (e.g. "0-4", "5-19", "20-49", "50-64",

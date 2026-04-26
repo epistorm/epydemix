@@ -113,6 +113,62 @@ def _resolve_config(path: str, depth: int, seen: set) -> Dict[str, Any]:
     return config
 
 
+def _check_ic_normalization(ic_cfg: Dict[str, Any], tol: float = 1e-4) -> List[str]:
+    """Return error strings for any demographic-group path whose IC fractions don't sum to 1.
+
+    Works without population data by reconstructing every "path" that appears in
+    the config: the ``"default"`` path (covers plain scalars and dict defaults) plus
+    every named group key found in any compartment dict (e.g. ``"65+"``).
+    For each path the contribution from each compartment is:
+      - the scalar value, if the compartment entry is a scalar;
+      - the group-specific value if the group key appears in the dict;
+      - the ``"default"`` value in the dict if the group key is absent;
+      - 0.0 if neither is present.
+
+    If any compartment uses count mode (int scalar or dict with ``unit: count``),
+    normalization cannot be checked without population data and the check is skipped.
+    """
+    # Skip normalization check if any compartment uses count mode.
+    for val in ic_cfg.values():
+        if isinstance(val, int):
+            return []
+        if isinstance(val, dict) and val.get("unit") == "count":
+            return []
+
+    errors = []
+
+    # Collect every named group key (excluding reserved keys) across all compartment dicts.
+    named_keys: set = set()
+    for val in ic_cfg.values():
+        if isinstance(val, dict):
+            named_keys.update(k for k in val if k not in ("default", "unit"))
+
+    for path in {"default"} | named_keys:
+        total = 0.0
+        all_numeric = True
+        for val in ic_cfg.values():
+            try:
+                if isinstance(val, (int, float)):
+                    total += float(val)
+                elif isinstance(val, dict):
+                    raw = val[path] if path in val else val.get("default", 0.0)
+                    total += float(raw)
+            except (TypeError, ValueError):
+                all_numeric = False
+                break
+
+        if not all_numeric:
+            continue  # non-numeric values are already caught by the type check
+
+        if abs(total - 1.0) > tol:
+            label = "default demographic groups" if path == "default" else f"group '{path}'"
+            errors.append(
+                f"initial_conditions: fractions for {label} sum to {total:.6g}, expected 1.0"
+            )
+
+    return errors
+
+
 def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Validate a config dict and return structured errors/warnings.
 
@@ -184,11 +240,19 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
         ic_cfg = config["initial_conditions"]
         for comp, val in ic_cfg.items():
             if isinstance(val, dict):
+                unit_val = val.get("unit")
+                if unit_val is not None and unit_val not in ("fraction", "count"):
+                    errors.append(
+                        f"initial_conditions[{comp!r}]['unit'] must be 'fraction' or 'count'"
+                    )
                 for k, v in val.items():
-                    if k != "default" and not isinstance(v, (int, float)):
+                    if k in ("default", "unit"):
+                        continue
+                    if not isinstance(v, (int, float)):
                         errors.append(
                             f"initial_conditions[{comp!r}][{k!r}] must be a number"
                         )
+        errors.extend(_check_ic_normalization(ic_cfg))
 
     return {
         "valid": len(errors) == 0,
@@ -397,17 +461,27 @@ def build_initial_conditions(
 ) -> Optional[Dict[str, np.ndarray]]:
     """Build initial conditions dict from config.
 
-    Each compartment entry in ``initial_conditions`` can be either:
+    Each compartment entry in ``initial_conditions`` can be:
 
-    * A **scalar** fraction (current behaviour) — the same fraction is applied
-      to every demographic group: ``ic[comp] = Nk * fraction``.
-    * A **dict** for per-group control.  Use the ``"default"`` key for groups
-      not explicitly listed (defaults to ``0.0`` when absent).  Every other key
-      must be a group name from ``population.Nk_names``::
+    * A **float scalar** — fraction applied proportionally to every group:
+      ``ic[comp] = Nk * fraction``.
+    * An **int scalar** — absolute count distributed proportionally across
+      groups: ``ic[comp] = Nk * (count / N_total)``.
+    * A **dict** for per-group control.  Optional ``unit`` key (``"fraction"``
+      or ``"count"``, default ``"fraction"``) sets how values are interpreted.
+      Use ``"default"`` for groups not explicitly listed (0.0 / 0 when absent).
+      Every other key must be a group name from ``population.Nk_names``::
 
+          # fraction mode (default)
           Recovered:
             default: 0.0
             "65+": 0.75   # 75 % of the 65+ group starts immune
+
+          # count mode
+          Infected:
+            unit: count
+            default: 0
+            "65+": 5      # exactly 5 individuals in the 65+ group
 
     Args:
         config: The full config dict.
@@ -423,6 +497,7 @@ def build_initial_conditions(
     pop_sizes = np.array(model.population.Nk, dtype=float)
     group_names = list(model.population.Nk_names)
     n_groups = len(pop_sizes)
+    total_pop = pop_sizes.sum()
 
     ic_dict = {}
     for comp_name, value in ic_cfg.items():
@@ -431,21 +506,49 @@ def build_initial_conditions(
             continue
 
         if isinstance(value, dict):
-            default_frac = float(value.get("default", 0.0))
-            fracs = np.full(n_groups, default_frac)
-            for group_key, frac in value.items():
-                if group_key == "default":
-                    continue
-                if group_key not in group_names:
-                    valid = ", ".join(f'"{g}"' for g in group_names)
-                    raise ValueError(
-                        f"initial_conditions[{comp_name!r}]: unknown group "
-                        f"{group_key!r}. Valid groups: {valid}"
-                    )
-                fracs[group_names.index(group_key)] = float(frac)
-            ic_dict[resolved] = pop_sizes * fracs
+            unit = value.get("unit", "fraction")
+            if unit == "count":
+                default_count = float(value.get("default", 0.0))
+                counts = np.full(n_groups, default_count)
+                for group_key, count in value.items():
+                    if group_key in ("unit", "default"):
+                        continue
+                    if group_key not in group_names:
+                        valid = ", ".join(f'"{g}"' for g in group_names)
+                        raise ValueError(
+                            f"initial_conditions[{comp_name!r}]: unknown group "
+                            f"{group_key!r}. Valid groups: {valid}"
+                        )
+                    counts[group_names.index(group_key)] = float(count)
+                ic_dict[resolved] = counts
+            else:  # fraction mode
+                default_frac = float(value.get("default", 0.0))
+                fracs = np.full(n_groups, default_frac)
+                for group_key, frac in value.items():
+                    if group_key in ("unit", "default"):
+                        continue
+                    if group_key not in group_names:
+                        valid = ", ".join(f'"{g}"' for g in group_names)
+                        raise ValueError(
+                            f"initial_conditions[{comp_name!r}]: unknown group "
+                            f"{group_key!r}. Valid groups: {valid}"
+                        )
+                    fracs[group_names.index(group_key)] = float(frac)
+                ic_dict[resolved] = pop_sizes * fracs
+        elif isinstance(value, int):
+            # count mode: distribute proportionally across groups
+            ic_dict[resolved] = pop_sizes * (float(value) / total_pop)
         else:
             ic_dict[resolved] = pop_sizes * float(value)
+
+    if ic_dict and set(ic_dict.keys()) == set(model.compartments):
+        total_fracs = sum(counts / pop_sizes for counts in ic_dict.values())
+        for group, s in zip(group_names, total_fracs):
+            if abs(s - 1.0) > 1e-4:
+                raise ValueError(
+                    f"initial_conditions: fractions for group '{group}' sum to "
+                    f"{s:.6g}, expected 1.0"
+                )
 
     return ic_dict if ic_dict else None
 

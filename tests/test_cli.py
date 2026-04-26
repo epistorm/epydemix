@@ -268,6 +268,73 @@ class TestBuildInitialConditions:
         assert "Susceptible" in ic
         assert "Infected" in ic
 
+    # --- normalization checks ---
+
+    def test_validate_catches_scalar_sum_above_one(self):
+        """validate_config errors when all-scalar fractions sum to > 1."""
+        cfg = dict(MINIMAL_CONFIG)
+        cfg["initial_conditions"] = {"Susceptible": 0.8, "Infected": 0.5, "Recovered": 0.0}
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert any("sum" in e for e in result["errors"])
+
+    def test_validate_catches_scalar_sum_below_one(self):
+        """validate_config errors when all-scalar fractions sum to < 1."""
+        cfg = dict(MINIMAL_CONFIG)
+        cfg["initial_conditions"] = {"Susceptible": 0.5, "Infected": 0.1, "Recovered": 0.0}
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert any("sum" in e for e in result["errors"])
+
+    def test_validate_catches_mixed_default_path_wrong(self):
+        """validate_config errors when the default path sums to != 1 in a mixed config."""
+        cfg = dict(MINIMAL_CONFIG)
+        cfg["initial_conditions"] = {
+            "Susceptible": {"default": 1.0, "elderly": 0.25},  # default path: 1.0 + 0.1 = 1.1
+            "Infected": 0.1,
+            "Recovered": {"default": 0.0, "elderly": 0.75},
+        }
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert any("default" in e for e in result["errors"])
+
+    def test_validate_catches_named_group_path_wrong(self):
+        """validate_config errors when a named-group path sums to != 1."""
+        cfg = dict(MINIMAL_CONFIG)
+        cfg["initial_conditions"] = {
+            "Susceptible": {"default": 0.9, "elderly": 0.3},  # elderly: 0.3 + 0.1 + 0.7 = 1.1
+            "Infected": 0.1,
+            "Recovered": {"default": 0.0, "elderly": 0.7},
+        }
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert any("elderly" in e for e in result["errors"])
+
+    def test_validate_passes_correct_mixed_ic(self):
+        """validate_config accepts a correctly normalised mixed scalar/dict IC block."""
+        cfg = dict(MINIMAL_CONFIG)
+        cfg["initial_conditions"] = {
+            "Susceptible": {"default": 0.99, "elderly": 0.25},
+            "Infected": 0.01,
+            "Recovered": {"default": 0.0, "elderly": 0.74},
+        }
+        result = validate_config(cfg)
+        assert result["valid"]
+        assert not any("sum" in e for e in result["errors"])
+
+    def test_runtime_guard_raises_on_bad_sum(self):
+        """build_initial_conditions raises ValueError when per-group fracs don't sum to 1."""
+        model = _multi_group_model()
+        cfg = {
+            "initial_conditions": {
+                "Susceptible": {"default": 1.0, "elderly": 0.25},  # default path > 1
+                "Infected": 0.1,
+                "Recovered": {"default": 0.0, "elderly": 0.75},
+            }
+        }
+        with pytest.raises(ValueError, match="sum"):
+            build_initial_conditions(cfg, model)
+
 
 # ---------------------------------------------------------------------------
 # CLI command tests (using Click's CliRunner)

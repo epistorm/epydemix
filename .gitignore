@@ -179,3 +179,7 @@ cython_debug/
 *.epx/
 
 epydemix-data-vtest
+
+# local AI agent configuration
+.claude
+
