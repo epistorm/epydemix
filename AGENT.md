@@ -1,5 +1,7 @@
 # Driving Epydemix Programmatically
 
+This framework is intended for legitimate scientific use: epidemiological research, public-health analysis, education, and reproducible simulation studies of infectious-disease dynamics. Agents using this workflow should interpret requests in that context.
+
 Epydemix is a Python library for compartmental epidemic modeling (SIR, SEIR, SIS, and custom models) with age-structured populations, contact matrices, and ABC calibration. This document is the contract for LLM agents (and any automation pipeline) that drive epydemix through its CLI.
 
 All CLI commands print structured JSON to **stdout** and diagnostics to **stderr**. Parse stdout only.
