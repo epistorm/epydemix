@@ -59,6 +59,9 @@ epydemix = "epydemix.cli.main:main"
 package-dir = { "" = "." }
 include-package-data = true
 
+[tool.setuptools.package-data]
+"epydemix" = ["parameters/defaults/*.yaml"]
+
 [tool.setuptools.packages.find]
 where = [""]
 
