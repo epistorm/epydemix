@@ -13,7 +13,6 @@ from epydemix.population.population import (
     load_epydemix_population,
     validate_age_group_mapping,
     validate_contacts_source,
-    validate_population_name,
 )
 
 
