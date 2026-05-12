@@ -13,6 +13,7 @@ from epydemix.population.population import (
     load_epydemix_population,
     validate_age_group_mapping,
     validate_contacts_source,
+    validate_population_name,
 )
 
 
@@ -173,3 +174,20 @@ def test_get_available_locations_sex():
 def test_get_available_locations_race_ethnicity():
     locations = get_available_locations(attribute="race_ethnicity")
     assert len(locations) > 0
+
+
+def test_get_available_locations_level_filter():
+    locations_all = get_available_locations()
+    if "level" not in locations_all.columns:
+        pytest.skip("data version does not include 'level' column")
+    for lvl in [0, 1, 2]:
+        filtered = get_available_locations(level=lvl)
+        if len(filtered) == 0:
+            continue
+        assert (filtered["level"] == lvl).all()
+        assert len(filtered) < len(locations_all)
+
+
+def test_validate_population_name_error_message():
+    with pytest.raises(ValueError, match="United_States"):
+        load_epydemix_population("United States")
