@@ -7,16 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.2.0] - 2026-05-12
 
 ### Added
 
 * [Numba](https://numba.pydata.org/) JIT compilation for the multinomial probability computation (`_multinomial_probs` in `utils.py`). The probability kernel is compiled at import time via `@njit`, eliminating interpreter overhead on the hot simulation path.
 * Added `numba>=0.57.0` as a dependency in `requirements.txt`, `setup.py`, and `pyproject.toml`.
+* Support for US county-level geographies (~3,000 locations) from the `epydemix-data` repository (now at `v1.2.0`). Counties are stored using folder names following the `Country__State__County_Name` convention (e.g., `United_States__Alabama__Autauga_County`).
+* `locations.csv` now includes two new columns: `level` (integer: 0=country, 1=state/province/region, 2=US county) and `iso_code` (ISO 3166-1 alpha-2 for countries such as `US`; ISO 3166-2 for states such as `US-AL`; 5-digit FIPS code for US counties such as `01001`).
+* Optional `level` parameter to `get_available_locations()` to filter the returned DataFrame to a specific geographic level (0, 1, or 2). Silently ignored when the loaded `locations.csv` lacks a `level` column, preserving backward compatibility with `data_version="v1.1.0"`.
 
 ### Changed
 
 * Optimized `compute_spontaneous_transition_rate()` and `compute_mediated_transition_rate()` in `epimodel.py`: when the rate expression is a plain parameter name that already exists in the parameters dictionary, the value is looked up directly instead of triggering a full `evaluate()` call with a `deepcopy` of the parameter environment. This avoids unnecessary copying on the hot simulation path.
+* Location names in `epydemix-data` now use `_` for spaces within a single geographic name and `__` as a separator between hierarchy levels (e.g., `United_States__Alabama__Autauga_County`). Country and state names present in `v1.1.0` have been renamed consistently (spaces replaced by `_`).
+* Default `data_version` bumped from `"v1.1.0"` to `"v1.2.0"` across `load_epydemix_population()`, `get_available_locations()`, `EpiModel.__init__()`, `EpiModel._load_or_create_population()`, and `EpiModel.import_epydemix_population()`.
+* `validate_population_name()` error message now includes a hint about the `_` / `__` naming convention and directs users to call `get_available_locations()` to browse valid names.
 
 ---
 
