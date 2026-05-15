@@ -191,7 +191,13 @@ def create_seiar(
 ) -> EpiModel:
     """Create a SEIAR model with symptomatic and asymptomatic infectious compartments."""
     model = EpiModel(
-        compartments=["Susceptible", "Exposed", "Infected", "Asymptomatic", "Recovered"],
+        compartments=[
+            "Susceptible",
+            "Exposed",
+            "Infected",
+            "Asymptomatic",
+            "Recovered",
+        ],
         parameters={
             "transmission_rate": transmission_rate,
             "incubation_rate": incubation_rate,
@@ -210,7 +216,10 @@ def create_seiar(
     model.add_transition(
         source="Susceptible",
         target="Exposed",
-        params=("transmission_rate * asymptomatic_relative_infectivity", "Asymptomatic"),
+        params=(
+            "transmission_rate * asymptomatic_relative_infectivity",
+            "Asymptomatic",
+        ),
         kind="mediated",
     )
     model.add_transition(
@@ -303,7 +312,9 @@ def add_outcome(
             )
         model.add_compartments(["Hospitalized"])
         model.add_parameter("hospitalization_rate", hospitalization_rate)
-        model.add_parameter("hospitalization_recovery_rate", hospitalization_recovery_rate)
+        model.add_parameter(
+            "hospitalization_recovery_rate", hospitalization_recovery_rate
+        )
         model.add_transition(
             source="Infected",
             target="Hospitalized",

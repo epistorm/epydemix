@@ -181,7 +181,11 @@ def test_seiar_model(basic_population):
     )
 
     assert set(model.compartments) == {
-        "Susceptible", "Exposed", "Infected", "Asymptomatic", "Recovered",
+        "Susceptible",
+        "Exposed",
+        "Infected",
+        "Asymptomatic",
+        "Recovered",
     }
     assert len(model.transitions_list) == 6
     assert model.parameters["transmission_rate"] == beta
@@ -191,7 +195,9 @@ def test_seiar_model(basic_population):
     assert model.parameters["asymptomatic_relative_infectivity"] == 0.5
 
     transitions = [(t.source, t.target) for t in model.transitions_list]
-    assert transitions.count(("Susceptible", "Exposed")) == 2  # one per infectious agent
+    assert (
+        transitions.count(("Susceptible", "Exposed")) == 2
+    )  # one per infectious agent
     assert ("Exposed", "Infected") in transitions
     assert ("Exposed", "Asymptomatic") in transitions
     assert ("Infected", "Recovered") in transitions
@@ -212,7 +218,9 @@ def test_seiar_model(basic_population):
         Nsim=10,
     )
     total_population = [
-        np.array([v.compartments[c] for c in v.compartments if "total" in c]).sum(axis=0)
+        np.array([v.compartments[c] for c in v.compartments if "total" in c]).sum(
+            axis=0
+        )
         for v in trajectory.trajectories
     ]
     assert np.allclose(total_population, 10000)
@@ -273,8 +281,13 @@ def test_vaccination_module(basic_population):
 def test_outcome_deaths_module(basic_population):
     """Test add_outcome with deaths adds Dead compartment and I → Dead transition"""
     model = create_sir(transmission_rate=0.3, recovery_rate=0.1)
-    model = add_outcome(model, "deaths", mortality_rate=0.01,
-                        hospitalization_rate=0.01, hospitalization_recovery_rate=0.1)
+    model = add_outcome(
+        model,
+        "deaths",
+        mortality_rate=0.01,
+        hospitalization_rate=0.01,
+        hospitalization_recovery_rate=0.1,
+    )
 
     assert "Dead" in model.compartments
     assert model.parameters["mortality_rate"] == 0.01
@@ -298,8 +311,13 @@ def test_outcome_deaths_module(basic_population):
 def test_outcome_hospitalization_module(basic_population):
     """Test add_outcome with hospitalization adds Hospitalized compartment and correct transitions"""
     model = create_sir(transmission_rate=0.3, recovery_rate=0.1)
-    model = add_outcome(model, "hospitalization", mortality_rate=0.01,
-                        hospitalization_rate=0.05, hospitalization_recovery_rate=0.1)
+    model = add_outcome(
+        model,
+        "hospitalization",
+        mortality_rate=0.01,
+        hospitalization_rate=0.05,
+        hospitalization_recovery_rate=0.1,
+    )
 
     assert "Hospitalized" in model.compartments
     assert model.parameters["hospitalization_rate"] == 0.05
@@ -309,9 +327,13 @@ def test_outcome_hospitalization_module(basic_population):
     assert ("Hospitalized", "Recovered") in transitions
 
     with pytest.raises(ValueError, match="'Recovered'"):
-        add_outcome(create_sis(0.3, 0.1), "hospitalization",
-                    mortality_rate=0.01, hospitalization_rate=0.05,
-                    hospitalization_recovery_rate=0.1)
+        add_outcome(
+            create_sis(0.3, 0.1),
+            "hospitalization",
+            mortality_rate=0.01,
+            hospitalization_rate=0.05,
+            hospitalization_recovery_rate=0.1,
+        )
 
     model.set_population(basic_population)
     model.run_simulations(
@@ -330,24 +352,62 @@ def test_outcome_hospitalization_module(basic_population):
 def test_outcome_invalid():
     """Test add_outcome raises ValueError for unknown outcome strings"""
     with pytest.raises(ValueError, match="Unknown outcome"):
-        add_outcome(create_sir(0.3, 0.1), "flying",
-                    mortality_rate=0.01, hospitalization_rate=0.01,
-                    hospitalization_recovery_rate=0.1)
+        add_outcome(
+            create_sir(0.3, 0.1),
+            "flying",
+            mortality_rate=0.01,
+            hospitalization_rate=0.01,
+            hospitalization_recovery_rate=0.1,
+        )
 
 
 def test_load_predefined_model_combinations():
     """Test load_predefined_model with module flags produces correct compartment sets"""
     cases = [
-        ({"model_name": "SEIAR"}, {"Susceptible", "Exposed", "Infected", "Asymptomatic", "Recovered"}),
-        ({"model_name": "SIR", "waning_immunity": True}, {"Susceptible", "Infected", "Recovered"}),
-        ({"model_name": "SEIR", "waning_immunity": True}, {"Susceptible", "Exposed", "Infected", "Recovered"}),
-        ({"model_name": "SIR", "vaccination": True}, {"Susceptible", "Infected", "Recovered", "Vaccinated"}),
-        ({"model_name": "SIR", "outcome": "deaths"}, {"Susceptible", "Infected", "Recovered", "Dead"}),
-        ({"model_name": "SEIR", "outcome": "deaths"}, {"Susceptible", "Exposed", "Infected", "Recovered", "Dead"}),
-        ({"model_name": "SIR", "outcome": "hospitalization"}, {"Susceptible", "Infected", "Recovered", "Hospitalized"}),
         (
-            {"model_name": "SEIAR", "waning_immunity": True, "vaccination": True, "outcome": "deaths"},
-            {"Susceptible", "Exposed", "Infected", "Asymptomatic", "Recovered", "Vaccinated", "Dead"},
+            {"model_name": "SEIAR"},
+            {"Susceptible", "Exposed", "Infected", "Asymptomatic", "Recovered"},
+        ),
+        (
+            {"model_name": "SIR", "waning_immunity": True},
+            {"Susceptible", "Infected", "Recovered"},
+        ),
+        (
+            {"model_name": "SEIR", "waning_immunity": True},
+            {"Susceptible", "Exposed", "Infected", "Recovered"},
+        ),
+        (
+            {"model_name": "SIR", "vaccination": True},
+            {"Susceptible", "Infected", "Recovered", "Vaccinated"},
+        ),
+        (
+            {"model_name": "SIR", "outcome": "deaths"},
+            {"Susceptible", "Infected", "Recovered", "Dead"},
+        ),
+        (
+            {"model_name": "SEIR", "outcome": "deaths"},
+            {"Susceptible", "Exposed", "Infected", "Recovered", "Dead"},
+        ),
+        (
+            {"model_name": "SIR", "outcome": "hospitalization"},
+            {"Susceptible", "Infected", "Recovered", "Hospitalized"},
+        ),
+        (
+            {
+                "model_name": "SEIAR",
+                "waning_immunity": True,
+                "vaccination": True,
+                "outcome": "deaths",
+            },
+            {
+                "Susceptible",
+                "Exposed",
+                "Infected",
+                "Asymptomatic",
+                "Recovered",
+                "Vaccinated",
+                "Dead",
+            },
         ),
     ]
     for kwargs, expected in cases:
