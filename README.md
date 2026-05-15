@@ -83,6 +83,7 @@ We provide a series of tutorials to help you get started with **epydemix**.
 - [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/09_Vaccinations.ipynb): Modeling Vaccinations
 - [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations and Calibration with Multiprocessing
 - [Tutorial 11](https://github.com/epistorm/epydemix/blob/main/tutorials/11_Epistorm_Mix_Matrices.ipynb): Using Epistorm-Mix Contact Matrices (sex and race/ethnicity)
+- [Tutorial 12](https://github.com/epistorm/epydemix/blob/main/tutorials/12_Predefined_Models.ipynb): Predefined Epidemic Models — Backbones and Modular Extensions
 
 You can run all tutorials directly in Google Colab — just open any notebook in the [tutorials](./tutorials) folder and click the **“Open in Colab”** button at the top.
 
