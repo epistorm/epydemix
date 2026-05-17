@@ -7,16 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.2.1] - 2026-05-15
+
+### Added
+
+* New `SEIAR` backbone model in `load_predefined_model`: adds an **Asymptomatic** infectious compartment branching from Exposed. New parameters: `asymptomatic_fraction`, `asymptomatic_recovery_rate`, `asymptomatic_relative_infectivity`.
+* Three orthogonal modular extensions that can be composed on top of any backbone via keyword arguments to `load_predefined_model`:
+  * `waning_immunity=True` — adds an **R → S** spontaneous transition (`waning_rate`, default `1/365`). Not compatible with `SIS`.
+  * `vaccination=True` — adds a **Vaccinated** compartment with `S → Vaccinated` (rate `vaccination_rate`) and `Vaccinated → Infected` at reduced rate `transmission_rate * (1 - vaccine_efficacy)`.
+  * `outcome="deaths"` — adds a **Dead** compartment with an `Infected → Dead` spontaneous transition (`mortality_rate`).
+  * `outcome="hospitalization"` — adds a **Hospitalized** compartment with `Infected → Hospitalized` (`hospitalization_rate`) and `Hospitalized → Recovered` (`hospitalization_recovery_rate`). Not compatible with `SIS`.
+* `SUPPORTED_MODELS` updated to `["SIR", "SEIR", "SIS", "SEIAR"]`.
+* All new rate parameters accept scalars, 1D time-varying arrays of shape `(T,)`, or 2D age-stratified arrays of shape `(T, G)`, consistent with the existing parameter system.
+* Tests for all new backbones and modules in `tests/test_predefined_models.py`, bringing `predefined_models.py` to 100% coverage.
+
+### Fixed
+
+* `create_default_initial_conditions` in `epimodel.py` now correctly handles models with duplicate mediated-transition sources (e.g. SEIAR, where `S` appears twice) and models where module compartments like `Vaccinated` or `Exposed` are transition targets. The method now uses a three-level strategy: (1) seed residual population into sources with no inflow at all; (2) if all sources have inflow (e.g. SIRS where waning makes `S` a target), fall back to the source with the most outgoing mediated transitions, preferring non-mediated-targets. This ensures `Susceptible` always receives the bulk of the population and accumulator compartments (`Vaccinated`, `Exposed`, `Hospitalized`, `Dead`) always start at zero when no explicit initial conditions are provided.
+
+### Tutorials
+
+* Added Tutorial 12: Predefined Epidemic Models — demonstrates all four backbone models and the three modular extensions (waning immunity, vaccination, outcome tracking), with side-by-side comparisons and an example of time-varying parameter overrides post-construction.
+
+---
+
+## [1.2.0] - 2026-05-12
 
 ### Added
 
 * [Numba](https://numba.pydata.org/) JIT compilation for the multinomial probability computation (`_multinomial_probs` in `utils.py`). The probability kernel is compiled at import time via `@njit`, eliminating interpreter overhead on the hot simulation path.
 * Added `numba>=0.57.0` as a dependency in `requirements.txt`, `setup.py`, and `pyproject.toml`.
+* Support for US county-level geographies (~3,000 locations) from the `epydemix-data` repository (now at `v1.2.0`). Counties are stored using folder names following the `Country__State__County_Name` convention (e.g., `United_States__Alabama__Autauga_County`).
+* `locations.csv` now includes two new columns: `level` (integer: 0=country, 1=state/province/region, 2=US county) and `iso_code` (ISO 3166-1 alpha-2 for countries such as `US`; ISO 3166-2 for states such as `US-AL`; 5-digit FIPS code for US counties such as `01001`).
+* Optional `level` parameter to `get_available_locations()` to filter the returned DataFrame to a specific geographic level (0, 1, or 2). Silently ignored when the loaded `locations.csv` lacks a `level` column, preserving backward compatibility with `data_version="v1.1.0"`.
 
 ### Changed
 
 * Optimized `compute_spontaneous_transition_rate()` and `compute_mediated_transition_rate()` in `epimodel.py`: when the rate expression is a plain parameter name that already exists in the parameters dictionary, the value is looked up directly instead of triggering a full `evaluate()` call with a `deepcopy` of the parameter environment. This avoids unnecessary copying on the hot simulation path.
+* Location names in `epydemix-data` now use `_` for spaces within a single geographic name and `__` as a separator between hierarchy levels (e.g., `United_States__Alabama__Autauga_County`). Country and state names present in `v1.1.0` have been renamed consistently (spaces replaced by `_`).
+* Default `data_version` bumped from `"v1.1.0"` to `"v1.2.0"` across `load_epydemix_population()`, `get_available_locations()`, `EpiModel.__init__()`, `EpiModel._load_or_create_population()`, and `EpiModel.import_epydemix_population()`.
+* `validate_population_name()` error message now includes a hint about the `_` / `__` naming convention and directs users to call `get_available_locations()` to browse valid names.
 
 ---
 

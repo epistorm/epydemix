@@ -517,6 +517,9 @@ def validate_population_name(
     """
     Validates if a given population name exists in the locations data.
 
+    Location names use underscores for spaces within a name and double underscores
+    to separate geographic hierarchy levels, e.g. ``United_States__Alabama__Autauga_County``.
+
     Args:
         population_name (str): The name of the population to validate.
         path_to_data (str): The path to the directory containing the data.
@@ -536,7 +539,12 @@ def validate_population_name(
     # Check if the population name is in the list of locations
     if population_name not in locations_list:
         raise ValueError(
-            f"Location {population_name} not found in the list of supported locations. See {locations_file}"
+            f"Location '{population_name}' not found in the list of supported locations. "
+            f"Location names use underscores for spaces within a name (e.g., 'United_States') "
+            f"and double underscores to separate hierarchy levels "
+            f"(e.g., 'United_States__Alabama__Autauga_County'). "
+            f"Use get_available_locations() to see all valid names. "
+            f"Locations file: {locations_file}"
         )
 
 
@@ -630,7 +638,7 @@ def load_epydemix_population(
         "sex": ["litvinova_2025"],
         "race_ethnicity": ["litvinova_2025"],
     },
-    data_version: str = "v1.1.0",
+    data_version: str = "v1.2.0",
     attribute: str = "age",
 ) -> "Population":
     """
@@ -643,7 +651,7 @@ def load_epydemix_population(
         layers (List[str]): The layers of contact matrices to load.
         age_group_mapping (Optional[Dict[str, List[str]]]): Mapping of age groups. If None, defaults based on contacts_source.
         supported_contacts_sources (Dict[str, List[str]]): Dict mapping attribute names to their supported contact sources.
-        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
+        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "v1.2.0".
         attribute (str): The demographic attribute layer. Defaults to "age".
 
     Returns:
@@ -742,18 +750,28 @@ def load_epydemix_population(
 
 def get_available_locations(
     attribute: str = "age",
-    data_version: str = "v1.1.0",
+    data_version: str = "v1.2.0",
+    level: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Returns a list of available locations from the epydemix-data repository.
 
     Args:
         attribute (str): The demographic attribute layer. Defaults to "age".
-        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "v1.1.0".
+        data_version (str): The git tag/version of the epydemix-data repository. Defaults to "v1.2.0".
+        level (Optional[int]): If provided, filters the result to only rows where the
+            ``level`` column equals this value. Geographic levels are:
+            0 = country, 1 = state/province, 2 = county. Silently ignored for data
+            versions that do not include a ``level`` column. Defaults to None (no filter).
 
     Returns:
         pd.DataFrame: A DataFrame containing the list of available locations.
     """
     base = f"{EPYDEMIX_DATA_BASE_URL}/{data_version}/"
     locations_url = _get_locations_path(base, attribute, is_remote=True)
-    return pd.read_csv(locations_url)
+    df = pd.read_csv(locations_url)
+
+    if level is not None and "level" in df.columns:
+        df = df[df["level"] == level]
+
+    return df.reset_index(drop=True)
