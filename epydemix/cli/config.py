@@ -15,6 +15,12 @@ from ..model.predefined_models import SUPPORTED_MODELS, load_predefined_model
 DEFAULT_N_SIMULATIONS = 100
 DEFAULT_N_PROJECTIONS = 200
 
+# Optional structural module flags accepted under the `model:` block of a
+# predefined-backbone config. Numeric module rates (e.g. waning_rate,
+# mortality_rate) stay in the `parameters:` block.
+_MODEL_MODULE_FIELDS = ("waning_immunity", "vaccination", "outcome")
+_VALID_OUTCOMES = ("deaths", "hospitalization")
+
 
 def _load_raw(path: str) -> Dict[str, Any]:
     """Load a single config file without resolving inheritance."""
@@ -201,6 +207,33 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
             f"Supported: {SUPPORTED_MODELS + ['custom']}"
         )
 
+    # Optional modular extensions for predefined backbones
+    if model_type in SUPPORTED_MODELS:
+        wi = model_cfg.get("waning_immunity")
+        if wi is not None and not isinstance(wi, bool):
+            errors.append("model.waning_immunity must be a boolean")
+        vac = model_cfg.get("vaccination")
+        if vac is not None and not isinstance(vac, bool):
+            errors.append("model.vaccination must be a boolean")
+        oc = model_cfg.get("outcome")
+        if oc is not None and oc not in _VALID_OUTCOMES:
+            errors.append(
+                f"model.outcome must be one of {list(_VALID_OUTCOMES)} or omitted"
+            )
+        # Compatibility guardrails — mirror runtime ValueErrors raised by
+        # load_predefined_model so they surface at `epydemix validate` time.
+        if model_type == "SIS" and wi is True:
+            errors.append(
+                "model.waning_immunity is not compatible with model.type 'SIS' "
+                "(SIS has no 'Recovered' compartment)"
+            )
+        if model_type == "SIS" and oc == "hospitalization":
+            errors.append(
+                "model.outcome 'hospitalization' is not compatible with "
+                "model.type 'SIS' (no 'Recovered' compartment for the "
+                "Hospitalized → Recovered transition)"
+            )
+
     if model_type == "custom":
         if "compartments" not in model_cfg:
             errors.append("Custom model requires 'model.compartments'")
@@ -362,7 +395,10 @@ def build_model_from_config(
 
     # Build model
     if model_type in SUPPORTED_MODELS:
-        model = load_predefined_model(model_type, **params)
+        module_kwargs = {
+            k: model_cfg[k] for k in _MODEL_MODULE_FIELDS if k in model_cfg
+        }
+        model = load_predefined_model(model_type, **params, **module_kwargs)
         # Apply population size from config (predefined models default to 100,000)
         if "size" in pop_cfg and "name" not in pop_cfg:
             model.population.Nk = np.array([pop_cfg["size"]], dtype=float)

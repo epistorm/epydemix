@@ -1,4 +1,12 @@
-from ..parameters.predefined_specs import seir_specs, sir_specs, sis_specs
+from ..parameters.predefined_specs import (
+    outcome_specs,
+    seiar_specs,
+    seir_specs,
+    sir_specs,
+    sis_specs,
+    vaccination_specs,
+    waning_immunity_specs,
+)
 from .epimodel import EpiModel
 
 SUPPORTED_MODELS = ["SIR", "SEIR", "SIS", "SEIAR"]
@@ -256,6 +264,16 @@ def create_seiar(
         params="asymptomatic_recovery_rate",
         kind="spontaneous",
     )
+    # Register parameter specs
+    for spec in seiar_specs(
+        transmission_rate,
+        incubation_rate,
+        recovery_rate,
+        asymptomatic_fraction,
+        asymptomatic_recovery_rate,
+        asymptomatic_relative_infectivity,
+    ):
+        model.parameter_registry.register(spec)
     return model
 
 
@@ -272,6 +290,8 @@ def add_waning_immunity(model: EpiModel, waning_rate: float) -> EpiModel:
         params="waning_rate",
         kind="spontaneous",
     )
+    for spec in waning_immunity_specs(waning_rate):
+        model.parameter_registry.register(spec)
     return model
 
 
@@ -294,6 +314,8 @@ def add_vaccination(
         params=("transmission_rate * (1 - vaccine_efficacy)", "Infected"),
         kind="mediated",
     )
+    for spec in vaccination_specs(vaccination_rate, vaccine_efficacy):
+        model.parameter_registry.register(spec)
     return model
 
 
@@ -341,4 +363,8 @@ def add_outcome(
         raise ValueError(
             f"Unknown outcome: '{outcome}'. Supported values are: 'deaths', 'hospitalization'."
         )
+    for spec in outcome_specs(
+        outcome, mortality_rate, hospitalization_rate, hospitalization_recovery_rate
+    ):
+        model.parameter_registry.register(spec)
     return model

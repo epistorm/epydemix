@@ -21,7 +21,7 @@ Read this file before doing anything. Then follow these principles:
 ```bash
 # 1. Discover available models
 epydemix models
-# → {"models": ["SIR", "SEIR", "SIS"]}
+# → {"models": ["SIR", "SEIR", "SIS", "SEIAR"]}
 
 # 1b. List named population datasets (461 countries/regions)
 epydemix populations
@@ -77,7 +77,24 @@ epydemix project calibration.epx -o projection.epx
 
 ## Available Models
 
-**Predefined:** SIR, SEIR, SIS — use `epydemix schema <MODEL>` to see their parameters.
+**Predefined backbones:**
+- **SIR** — Susceptible → Infected → Recovered
+- **SEIR** — adds an Exposed (latent) compartment between S and I
+- **SIS** — Susceptible → Infected → Susceptible (no lasting immunity)
+- **SEIAR** — SEIR plus an Asymptomatic infectious compartment branching from Exposed
+
+Use `epydemix schema <MODEL>` to see their parameters.
+
+**Modular extensions** can be layered on top of any compatible backbone via flags in the `model:` block of the config (or as CLI flags to `epydemix schema`):
+
+| Flag | Effect | Adds parameters | Incompatible with |
+|---|---|---|---|
+| `waning_immunity: true` | Adds `Recovered → Susceptible` (loss of immunity) | `waning_rate` | SIS |
+| `vaccination: true` | Adds a `Vaccinated` compartment with `S → Vaccinated` and breakthrough `Vaccinated → Infected` at reduced rate | `vaccination_rate`, `vaccine_efficacy` | — |
+| `outcome: deaths` | Adds a `Dead` compartment with `Infected → Dead` | `mortality_rate` | — |
+| `outcome: hospitalization` | Adds a `Hospitalized` compartment with `Infected → Hospitalized → Recovered` | `hospitalization_rate`, `hospitalization_recovery_rate` | SIS |
+
+The three extensions are orthogonal — combine any of them on the same backbone. Module flags go under `model:` in YAML; their numeric rate parameters go in `parameters:` like any other rate.
 
 **Custom:** define any compartmental model by specifying compartments and transitions in the config. See "Building Custom Models" below.
 
@@ -86,6 +103,10 @@ epydemix project calibration.epx -o projection.epx
 ```bash
 # JSON Schema with bounds, defaults, descriptions, units
 epydemix schema SEIR
+
+# Schema for a backbone with modules enabled (parameters are added on)
+epydemix schema SEIR --waning-immunity --outcome deaths
+epydemix schema SEIAR --vaccination
 
 # Human-readable parameter descriptions
 epydemix schema SIR --format describe
@@ -122,7 +143,16 @@ The config is a YAML or JSON file — the single artifact you construct to run a
 ```yaml
 # ── Model ────────────────────────────────────────────────────────
 model:
-  type: "SEIR"                      # "SIR", "SEIR", "SIS", or "custom"
+  type: "SEIR"                      # "SIR", "SEIR", "SIS", "SEIAR", or "custom"
+  # Optional modular extensions (predefined backbones only).
+  # See "Available Models" for compatibility and the parameters each adds.
+  # waning_immunity: true           # adds R → S; requires waning_rate in parameters
+  # vaccination: true               # adds Vaccinated compartment; requires
+  #                                 #   vaccination_rate, vaccine_efficacy
+  # outcome: deaths                 # adds Dead; requires mortality_rate
+  # outcome: hospitalization        # adds Hospitalized; requires
+  #                                 #   hospitalization_rate, hospitalization_recovery_rate
+  #
   # The fields below are only needed for type: custom
   compartments: ["S", "E", "I", "R"]
   transitions:
@@ -287,7 +317,7 @@ results.epx/
 
 Column naming convention: `{Compartment}_{group}` for age-group-specific columns, `{Compartment}_total` for the sum across all groups. Transition columns follow the same pattern: `{Source}_to_{Target}_{group}` and `{Source}_to_{Target}_total`.
 
-**Predefined vs custom model names:** predefined models (SIR, SEIR, SIS) expand compartment labels to full words — `Susceptible_total`, `Infected_total`, `Exposed_total`, `Recovered_total`. Custom models use the short names you define in the config — `S_total`, `I_total`, etc. Always verify column names with `epydemix inspect <bundle> manifest` before writing inspect commands or Parquet queries against a predefined-model bundle.
+**Predefined vs custom model names:** predefined models (SIR, SEIR, SIS, SEIAR) expand compartment labels to full words — `Susceptible_total`, `Infected_total`, `Exposed_total`, `Recovered_total`. SEIAR adds `Asymptomatic_total`. Modular extensions add their own compartments: `vaccination: true` → `Vaccinated_total`; `outcome: deaths` → `Dead_total`; `outcome: hospitalization` → `Hospitalized_total`. Custom models use the short names you define in the config — `S_total`, `I_total`, etc. Always verify column names with `epydemix inspect <bundle> manifest` before writing inspect commands or Parquet queries against a predefined-model bundle.
 
 **Note:** `parameters.parquet` contains only `sim_id` for plain `run` and `project` commands (parameters are fixed, not varied). It is populated with sampled parameter values only for `calibrate` runs.
 

@@ -303,7 +303,7 @@ class TestPredefinedSpecs:
         assert spec_map["recovery_rate"].default == 0.2
 
     def test_all_model_types_have_factories(self):
-        assert set(MODEL_SPEC_FACTORIES.keys()) == {"SIR", "SEIR", "SIS"}
+        assert set(MODEL_SPEC_FACTORIES.keys()) == {"SIR", "SEIR", "SIS", "SEIAR"}
 
 
 # ---------------------------------------------------------------------------

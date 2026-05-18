@@ -399,12 +399,24 @@ def _print_tabular(data, fmt):
 @click.option("--format", "fmt", default="json-schema",
               type=click.Choice(["json-schema", "describe"]),
               help="Output format.")
-def schema(model_name, fmt):
+@click.option("--waning-immunity", "waning_immunity", is_flag=True, default=False,
+              help="Include the waning-immunity module (adds waning_rate).")
+@click.option("--vaccination", is_flag=True, default=False,
+              help="Include the vaccination module "
+                   "(adds vaccination_rate, vaccine_efficacy).")
+@click.option("--outcome", default=None,
+              type=click.Choice(["deaths", "hospitalization"]),
+              help="Include an outcome module "
+                   "(deaths → mortality_rate; "
+                   "hospitalization → hospitalization_rate, hospitalization_recovery_rate).")
+def schema(model_name, fmt, waning_immunity, vaccination, outcome):
     """Show the parameter schema for a predefined model.
 
     \b
     Examples:
       epydemix schema SEIR
+      epydemix schema SEIAR
+      epydemix schema SEIR --waning-immunity --outcome deaths
       epydemix schema SIR --format describe
     """
     from ..model.predefined_models import SUPPORTED_MODELS, load_predefined_model
@@ -414,7 +426,16 @@ def schema(model_name, fmt):
         _error_json("UNKNOWN_MODEL",
                      f"Unknown model '{model_name}'. Available: {SUPPORTED_MODELS}")
 
-    model = load_predefined_model(model_name)
+    try:
+        model = load_predefined_model(
+            model_name,
+            waning_immunity=waning_immunity,
+            vaccination=vaccination,
+            outcome=outcome,
+        )
+    except ValueError as e:
+        _error_json("INVALID_MODULE", str(e))
+
     registry = model.parameter_registry
 
     if fmt == "json-schema":

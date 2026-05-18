@@ -110,19 +110,20 @@ add_figure_to_manifest("baseline.epx", "scenario_comparison.png",
 
 ### Recipe 3: Hospital capacity analysis
 
-Plot hospitalizations against a capacity threshold.
+Plot hospitalizations against a capacity threshold. The column name depends on how the hospital compartment was introduced: predefined backbones with `outcome: hospitalization` produce `Hospitalized_total`; custom models use whatever short name you defined (e.g. `H_total`). Verify with `epydemix inspect <bundle> manifest` first.
 
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
 
 BUNDLE = "results.epx"
+HOSP_COL = "Hospitalized_total"   # or "H_total" for custom models — check the manifest
 CAPACITY = 500  # bed threshold
 
 comp = pd.read_parquet(f"{BUNDLE}/compartments.parquet",
-                       columns=["sim_id", "date", "H_total"])
+                       columns=["sim_id", "date", HOSP_COL])
 comp["date"] = pd.to_datetime(comp["date"])
-piv = comp.pivot(index="date", columns="sim_id", values="H_total")
+piv = comp.pivot(index="date", columns="sim_id", values=HOSP_COL)
 median = piv.quantile(0.5, axis=1)
 lo, hi = piv.quantile(0.05, axis=1), piv.quantile(0.95, axis=1)
 
@@ -142,7 +143,7 @@ fig.savefig(f"{BUNDLE}/figures/hospital_capacity.png", dpi=150)
 from epydemix.io import add_figure_to_manifest
 add_figure_to_manifest(BUNDLE, "hospital_capacity.png",
                        f"Hospital census vs {CAPACITY}-bed capacity",
-                       ["H_total"])
+                       [HOSP_COL])
 ```
 
 ### Recipe 4: Calibration fit vs. observed data
@@ -341,3 +342,120 @@ epydemix project sir_calibration.epx --config projection.yaml -o sir_projection.
 epydemix inspect sir_projection.epx quantiles -v Infected_total -q 0.05,0.5,0.95
 epydemix inspect sir_projection.epx peak -v Infected_total
 ```
+
+### Example 6: SEIAR with asymptomatic transmission
+
+The SEIAR backbone adds an `Asymptomatic` infectious compartment that branches off `Exposed`. A fraction (`asymptomatic_fraction`) of exposed individuals go to `Asymptomatic` and transmit at a reduced rate (`asymptomatic_relative_infectivity`), while the rest become symptomatic `Infected`.
+
+```bash
+# Discover the SEIAR parameter set
+epydemix schema SEIAR
+
+cat > seiar.yaml << 'EOF'
+model:
+  type: SEIAR
+parameters:
+  transmission_rate: 0.4
+  incubation_rate: 0.25
+  recovery_rate: 0.14
+  asymptomatic_fraction: 0.4              # 40% of cases are asymptomatic
+  asymptomatic_recovery_rate: 0.14
+  asymptomatic_relative_infectivity: 0.5  # asymptomatics transmit at half rate
+simulation:
+  start_date: "2024-01-01"
+  end_date: "2024-06-30"
+  n_simulations: 100
+initial_conditions:
+  Susceptible: 0.999
+  Exposed: 0.0005
+  Infected: 0.0003
+  Asymptomatic: 0.0002
+  Recovered: 0.0
+EOF
+epydemix validate seiar.yaml
+epydemix run seiar.yaml -o seiar.epx
+
+# Compare symptomatic vs asymptomatic prevalence at peak
+epydemix inspect seiar.epx peak -v Infected_total,Asymptomatic_total
+
+# Compute attack rate from S depletion. Do NOT sum
+# Susceptible_to_Exposed_total here — SEIAR has two S→E mediated transitions
+# (one via Infected, one via Asymptomatic) and the framework sums them into
+# a single column, double-counting the actual flow. S depletion is unambiguous
+# since no S→V vaccination transition is present.
+python - << 'PY'
+import pandas as pd
+comp = pd.read_parquet("seiar.epx/compartments.parquet",
+                       columns=["sim_id", "date", "Susceptible_total"])
+N = 100000
+S0 = comp.groupby("sim_id")["Susceptible_total"].first()
+Sf = comp.groupby("sim_id")["Susceptible_total"].last()
+attack = (S0 - Sf) / N * 100
+print(f"Attack rate: median={attack.median():.1f}%  "
+      f"[{attack.quantile(0.05):.1f}%, {attack.quantile(0.95):.1f}%]")
+PY
+```
+
+### Example 7: Modular composition — endemic disease with hospitalization
+
+Compose two modules on a SEIR backbone: `outcome: hospitalization` adds a `Hospitalized` compartment for capacity planning, and `waning_immunity` makes the disease endemic by recycling recovered individuals back to susceptible after ~1 year. Then compare scenarios with and without waning to see how the long-run dynamics differ.
+
+```bash
+# Discover the extended parameter set
+epydemix schema SEIR --waning-immunity --outcome hospitalization
+
+# Baseline: lifelong immunity, single wave
+cat > seir_outbreak.yaml << 'EOF'
+model:
+  type: SEIR
+  outcome: hospitalization
+parameters:
+  transmission_rate: 0.35
+  incubation_rate: 0.2
+  recovery_rate: 0.1
+  hospitalization_rate: 0.01
+  hospitalization_recovery_rate: 0.1
+population:
+  size: 500000
+simulation:
+  start_date: "2024-01-01"
+  end_date: "2026-12-31"           # 3 years
+  n_simulations: 50
+initial_conditions:
+  Susceptible: 0.9999
+  Exposed: 0.00005
+  Infected: 0.00005
+  Recovered: 0.0
+  Hospitalized: 0.0
+EOF
+
+# Endemic variant: same model + waning immunity
+cat > seir_endemic.yaml << 'EOF'
+base: seir_outbreak.yaml
+model:
+  type: SEIR
+  outcome: hospitalization
+  waning_immunity: true
+parameters:
+  transmission_rate: 0.35
+  incubation_rate: 0.2
+  recovery_rate: 0.1
+  hospitalization_rate: 0.01
+  hospitalization_recovery_rate: 0.1
+  waning_rate: 0.00274              # 1/365 → ~1-year immunity
+EOF
+
+for f in seir_outbreak.yaml seir_endemic.yaml; do
+  epydemix validate "$f"
+  epydemix run "$f" -o "${f%.yaml}.epx"
+done
+
+# Compare peak hospitalization timing and magnitude
+epydemix compare seir_outbreak.epx seir_endemic.epx \
+  -n Outbreak,Endemic \
+  -m peak,peak_date,days_over:500 \
+  -v Hospitalized_total \
+  -b Outbreak
+```
+
+Plot the hospital census of both scenarios overlaid using Recipe 2 (with `HOSP_COL = "Hospitalized_total"`) — the endemic variant should show repeated waves while the outbreak case has a single peak followed by herd-immunity decline.
