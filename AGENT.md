@@ -227,6 +227,14 @@ initial_conditions:
 # to control how values are interpreted. Scalars and dicts can be mixed
 # freely in the same block.
 #
+# IMPORTANT: per-group totals must equal each group's population exactly — there
+# is no auto-normalization. A scalar fraction like `S: 0.999` is applied to every
+# group independently, so combining it with a per-group count dict for another
+# compartment (e.g. `I: {"20-49": 106, ...}`) almost always fails the validator
+# (`fractions for group 'X' sum to 0.999005, expected 1.0`). When any compartment
+# needs per-group control, put all compartments in count mode (`unit: count`) and
+# set S explicitly per group so totals match group sizes exactly.
+#
 # Example: 75% of the 65+ age group starts immune (fraction mode, default):
 #
 # initial_conditions:
@@ -278,6 +286,8 @@ overrides:
 **Optional sections:** `parameters` (defaults used if omitted), `population`, `initial_conditions`, `interventions`, `overrides`, `base`.
 
 **Simulation timestep (`dt`).** The `simulation.dt` field controls the integration timestep in days. The default is `1.0` (one day). Smaller values (e.g. `0.5`, `0.25`) increase accuracy at the cost of speed — this matters for models with fast dynamics (short latent periods, high transmission rates) where daily steps can overshoot transitions. Larger values (e.g. `2.0`) are rarely useful and risk numerical instability. The timestep applies uniformly to `run`, `calibrate`, and `project` commands. Output is always resampled to daily resolution regardless of `dt`, so the choice of timestep does not affect the shape of the output DataFrame — only the accuracy of the underlying integration.
+
+**`dt` and scheduled transitions.** `kind: scheduled` transitions index the dose array by integer day, so they are only correct when `dt: 1.0`. Using `dt < 1.0` together with a scheduled transition fails with `index N is out of bounds for axis 0 with size N` partway through the run. If you need sub-day integration accuracy, drop the scheduled transition (or model the dose flow some other way).
 
 Custom models can also use `kind: scheduled` transitions (see Building Custom Models) to drive compartment flows from a daily dose CSV — useful for vaccination campaigns.
 
