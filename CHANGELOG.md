@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 * `add_vaccination` in `predefined_models.py` now routes breakthrough infections (`Vaccinated → ...`) to **Exposed** when the backbone has an Exposed compartment (`SEIR`, `SEIAR`), instead of always jumping straight to `Infected`. Previously, vaccinated individuals who got infected on `SEIR`/`SEIAR` backbones skipped the incubation stage entirely; they now correctly re-enter `Exposed` and progress through incubation like any other infection. Behavior for `SIR`/`SIS` (`Vaccinated → Infected`) is unchanged.
+* **Breaking:** `add_outcome` in `predefined_models.py` now interprets `mortality_rate` / `hospitalization_rate` as the *fraction* of the Infected outflow that goes to Dead / Hospitalized, rescaling the existing Infected outflow (e.g. `Infected → Recovered`) by `(1 - rate)`. Previously these were independent day⁻¹ rates competing with `recovery_rate` for the same Infected pool, which meant `hospitalization_rate=0.02` did not mean "2% of infections are hospitalized" — it meant an extra, independent hazard on top of recovery. This matches the branching-fraction convention already used by `asymptomatic_fraction` in `create_seiar`. Existing code passing `outcome=` will see a behavior change: pass the intended fraction (e.g. `0.02` for "2% hospitalized") rather than a standalone rate.
 
 ---
 
