@@ -7,6 +7,7 @@ import numpy as np
 
 from epydemix.model.epimodel import EpiModel, stochastic_simulation
 from epydemix.population import Population
+from epydemix.utils.utils import apply_initial_conditions
 
 # filepath: epydemix/tests/test_epimodel.py
 
@@ -180,4 +181,44 @@ def test_stochastic_simulation_invalid_initial_conditions(mock_epimodel):
             parameters=parameters,
             initial_conditions=initial_conditions,
             dt=dt,
+        )
+
+
+def test_apply_initial_conditions_unknown_compartment(mock_epimodel):
+    """Test apply_initial_conditions raises ValueError for a mistyped/unknown compartment name"""
+    with pytest.raises(ValueError, match="Susceptibl"):
+        apply_initial_conditions(
+            mock_epimodel,
+            {"Susceptibl": np.array([990, 990, 990])},  # typo, missing trailing "e"
+        )
+
+    with pytest.raises(ValueError, match="Bogus"):
+        apply_initial_conditions(mock_epimodel, {"Bogus": np.array([990, 990, 990])})
+
+
+def test_apply_initial_conditions_partial_dict(mock_epimodel):
+    """Test apply_initial_conditions accepts a valid partial dict, defaulting unset compartments to 0"""
+    initial_conditions = apply_initial_conditions(
+        mock_epimodel, {"Infected": np.array([10, 10, 10])}
+    )
+
+    assert initial_conditions.shape == (3, 3)
+    infected_idx = mock_epimodel.compartments_idx["Infected"]
+    susceptible_idx = mock_epimodel.compartments_idx["Susceptible"]
+    assert np.array_equal(initial_conditions[infected_idx], np.array([10, 10, 10]))
+    assert np.array_equal(initial_conditions[susceptible_idx], np.array([0, 0, 0]))
+
+
+def test_run_simulations_unknown_compartment_in_initial_conditions(mock_epimodel):
+    """Test run_simulations surfaces a clear error for a mistyped initial_conditions_dict key"""
+    with pytest.raises(RuntimeError, match="Susceptibl"):
+        mock_epimodel.run_simulations(
+            start_date="2023-01-01",
+            end_date="2023-01-10",
+            initial_conditions_dict={
+                "Susceptibl": np.array([990, 990, 990]),
+                "Infected": np.array([10, 10, 10]),
+                "Recovered": np.array([0, 0, 0]),
+            },
+            Nsim=1,
         )

@@ -338,9 +338,7 @@ def test_outcome_deaths_module(basic_population):
     recovered_transition = next(
         t for t in model.transitions_list if t.target == "Recovered"
     )
-    dead_transition = next(
-        t for t in model.transitions_list if t.target == "Dead"
-    )
+    dead_transition = next(t for t in model.transitions_list if t.target == "Dead")
     assert recovered_transition.source == "Infected"
     assert recovered_transition.params == "recovery_rate * (1 - mortality_rate)"
     assert dead_transition.source == "Infected"
@@ -375,7 +373,8 @@ def test_outcome_hospitalization_module(basic_population):
     assert model.parameters["hospitalization_rate"] == 0.05
     assert model.parameters["hospitalization_recovery_rate"] == 0.1
     recovered_transition = next(
-        t for t in model.transitions_list
+        t
+        for t in model.transitions_list
         if t.source == "Infected" and t.target == "Recovered"
     )
     hospitalized_transition = next(
@@ -426,12 +425,11 @@ def test_outcome_deaths_module_sis_backbone(basic_population):
 
     assert "Dead" in model.compartments
     recovered_transition = next(
-        t for t in model.transitions_list
+        t
+        for t in model.transitions_list
         if t.source == "Infected" and t.target == "Susceptible"
     )
-    dead_transition = next(
-        t for t in model.transitions_list if t.target == "Dead"
-    )
+    dead_transition = next(t for t in model.transitions_list if t.target == "Dead")
     assert recovered_transition.params == "recovery_rate * (1 - mortality_rate)"
     assert dead_transition.source == "Infected"
     assert dead_transition.params == "recovery_rate * mortality_rate"
