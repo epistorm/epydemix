@@ -39,7 +39,8 @@ def load_predefined_model(
         waning_immunity (bool): Add waning immunity (R → S). Not compatible with SIS. Default False.
         waning_rate (float): Rate of immunity waning. Default 1/365 (~1 year). Interpreted as the inverse
             of the average immunity duration in days.
-        vaccination (bool): Add vaccination compartment (S → Vaccinated → Infected at reduced rate). Default False.
+        vaccination (bool): Add vaccination compartment (S → Vaccinated → Infected/Exposed at reduced rate;
+            breakthrough infections go to Exposed if the backbone has an Exposed compartment, otherwise Infected). Default False.
         vaccination_rate (float): Rate of vaccination from Susceptible. Default 0.01.
         vaccine_efficacy (float): Fraction by which vaccine reduces transmission. Default 0.9.
         outcome (str or None): Track a disease outcome. One of None, "deaths", "hospitalization". Default None.
@@ -268,7 +269,7 @@ def add_waning_immunity(model: EpiModel, waning_rate: float) -> EpiModel:
 def add_vaccination(
     model: EpiModel, vaccination_rate: float, vaccine_efficacy: float
 ) -> EpiModel:
-    """Add a vaccination compartment (Susceptible → Vaccinated → Infected at reduced rate)."""
+    """Add a vaccination compartment (Susceptible → Vaccinated → Infected/Exposed at reduced rate)."""
     model.add_compartments(["Vaccinated"])
     model.add_parameter("vaccination_rate", vaccination_rate)
     model.add_parameter("vaccine_efficacy", vaccine_efficacy)
@@ -278,9 +279,10 @@ def add_vaccination(
         params="vaccination_rate",
         kind="spontaneous",
     )
+    breakthrough_target = "Exposed" if "Exposed" in model.compartments else "Infected"
     model.add_transition(
         source="Vaccinated",
-        target="Infected",
+        target=breakthrough_target,
         params=("transmission_rate * (1 - vaccine_efficacy)", "Infected"),
         kind="mediated",
     )

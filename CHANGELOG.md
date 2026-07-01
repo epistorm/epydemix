@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+* `add_vaccination` in `predefined_models.py` now routes breakthrough infections (`Vaccinated → ...`) to **Exposed** when the backbone has an Exposed compartment (`SEIR`, `SEIAR`), instead of always jumping straight to `Infected`. Previously, vaccinated individuals who got infected on `SEIR`/`SEIAR` backbones skipped the incubation stage entirely; they now correctly re-enter `Exposed` and progress through incubation like any other infection. Behavior for `SIR`/`SIS` (`Vaccinated → Infected`) is unchanged.
+
+---
+
 ## [1.2.1] - 2026-05-15
 
 ### Added

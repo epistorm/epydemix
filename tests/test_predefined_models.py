@@ -278,6 +278,50 @@ def test_vaccination_module(basic_population):
     )
 
 
+def test_vaccination_module_with_exposed_backbone(basic_population):
+    """Test add_vaccination routes breakthrough infections to Exposed when the backbone has one"""
+    seir_model = create_seir(
+        transmission_rate=0.3, incubation_rate=0.2, recovery_rate=0.1
+    )
+    seir_model = add_vaccination(
+        seir_model, vaccination_rate=0.01, vaccine_efficacy=0.9
+    )
+
+    seir_transitions = {(t.source, t.target) for t in seir_model.transitions_list}
+    assert ("Vaccinated", "Exposed") in seir_transitions
+    assert ("Vaccinated", "Infected") not in seir_transitions
+
+    seiar_model = create_seiar(
+        transmission_rate=0.3,
+        incubation_rate=0.2,
+        recovery_rate=0.1,
+        asymptomatic_fraction=0.4,
+        asymptomatic_recovery_rate=0.14,
+        asymptomatic_relative_infectivity=0.5,
+    )
+    seiar_model = add_vaccination(
+        seiar_model, vaccination_rate=0.01, vaccine_efficacy=0.9
+    )
+
+    seiar_transitions = {(t.source, t.target) for t in seiar_model.transitions_list}
+    assert ("Vaccinated", "Exposed") in seiar_transitions
+    assert ("Vaccinated", "Infected") not in seiar_transitions
+
+    seir_model.set_population(basic_population)
+    seir_model.run_simulations(
+        start_date="2023-01-01",
+        end_date="2023-01-10",
+        initial_conditions_dict={
+            "Susceptible": np.array([9900]),
+            "Exposed": np.array([0]),
+            "Infected": np.array([100]),
+            "Recovered": np.array([0]),
+            "Vaccinated": np.array([0]),
+        },
+        Nsim=5,
+    )
+
+
 def test_outcome_deaths_module(basic_population):
     """Test add_outcome with deaths adds Dead compartment and I → Dead transition"""
     model = create_sir(transmission_rate=0.3, recovery_rate=0.1)
