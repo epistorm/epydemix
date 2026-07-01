@@ -26,7 +26,7 @@ colors = sns.color_palette("Dark2")
 def mock_population():
     population = Population()
     population.add_population(
-        np.random.randint(0, 100000, size=5), ["0-9", "10-19", "20-29", "30-39", "40+"]
+        np.random.randint(1, 100000, size=5), ["0-9", "10-19", "20-29", "30-39", "40+"]
     )
     population.add_contact_matrix(np.random.random(size=(5, 5)), "school")
     population.add_contact_matrix(np.random.random(size=(5, 5)), "work")
