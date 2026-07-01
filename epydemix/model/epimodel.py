@@ -1066,10 +1066,15 @@ def stochastic_simulation(
                 ]
             )
 
-            # Store transition counts
+            # Store transition counts (dedupe transitions sharing the same (source, target)
+            # pair, since their rates were already merged into a single delta before the draw)
+            seen_tr_idx = set()
             for tr in transitions:
                 tr_name = f"{tr.source}_to_{tr.target}"
                 tr_idx = epimodel.transitions_idx[tr_name]
+                if tr_idx in seen_tr_idx:
+                    continue
+                seen_tr_idx.add(tr_idx)
                 transitions_evolution[t, tr_idx] += delta[
                     :, epimodel.compartments_idx[tr.target]
                 ]

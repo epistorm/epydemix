@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from epydemix.model.epimodel import stochastic_simulation
 from epydemix.model.predefined_models import (
     SUPPORTED_MODELS,
     add_outcome,
@@ -224,6 +225,55 @@ def test_seiar_model(basic_population):
         for v in trajectory.trajectories
     ]
     assert np.allclose(total_population, 10000)
+
+
+def test_seiar_model_transition_counts_not_double_counted(basic_population):
+    """Test that Susceptible_to_Exposed transition counts (mediated by both Infected and
+    Asymptomatic) aren't double-counted, since both share the same (source, target) pair"""
+    model = create_seiar(
+        transmission_rate=0.3,
+        incubation_rate=0.2,
+        recovery_rate=0.1,
+        asymptomatic_fraction=0.4,
+        asymptomatic_recovery_rate=0.14,
+        asymptomatic_relative_infectivity=0.5,
+    )
+    model.set_population(basic_population)
+
+    T = 30
+    contact_matrices = [
+        {"overall": basic_population.contact_matrices["all"]} for _ in range(T)
+    ]
+    initial_conditions = np.zeros((len(model.compartments), 1))
+    for comp, value in [
+        ("Susceptible", 9800),
+        ("Exposed", 100),
+        ("Infected", 100),
+        ("Asymptomatic", 0),
+        ("Recovered", 0),
+    ]:
+        initial_conditions[model.compartments_idx[comp]] = value
+    parameters = {name: np.full(T, value) for name, value in model.parameters.items()}
+
+    compartments_evolution, transitions_evolution = stochastic_simulation(
+        T=T,
+        contact_matrices=contact_matrices,
+        epimodel=model,
+        parameters=parameters,
+        initial_conditions=initial_conditions,
+        dt=1.0,
+    )
+
+    susceptible_idx = model.compartments_idx["Susceptible"]
+    se_idx = model.transitions_idx["Susceptible_to_Exposed"]
+    susceptible_start = initial_conditions[susceptible_idx].sum()
+    susceptible_end = compartments_evolution[-1, susceptible_idx].sum()
+    total_se_flow = transitions_evolution[:, se_idx].sum()
+
+    # Susceptible only ever depletes into Exposed in this model (no waning),
+    # so the recorded S->E flow must equal the actual Susceptible depletion,
+    # not double it.
+    assert np.isclose(susceptible_start - susceptible_end, total_se_flow)
 
 
 def test_waning_immunity_module(basic_population):
