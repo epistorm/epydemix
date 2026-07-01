@@ -7,14 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.3.0] - 2026-07-01
+
+### Changed
+
+* **Breaking:** `add_outcome` in `predefined_models.py` now interprets `mortality_rate` / `hospitalization_rate` as the *fraction* of the Infected outflow that goes to Dead / Hospitalized, rescaling the existing Infected outflow (e.g. `Infected → Recovered`) by `(1 - rate)`. Previously these were independent day⁻¹ rates competing with `recovery_rate` for the same Infected pool, which meant `hospitalization_rate=0.02` did not mean "2% of infections are hospitalized" — it meant an extra, independent hazard on top of recovery. This matches the branching-fraction convention already used by `asymptomatic_fraction` in `create_seiar`. Existing code passing `outcome=` will see a behavior change: pass the intended fraction (e.g. `0.02` for "2% hospitalized") rather than a standalone rate.
 
 ### Fixed
 
 * `add_vaccination` in `predefined_models.py` now routes breakthrough infections (`Vaccinated → ...`) to **Exposed** when the backbone has an Exposed compartment (`SEIR`, `SEIAR`), instead of always jumping straight to `Infected`. Previously, vaccinated individuals who got infected on `SEIR`/`SEIAR` backbones skipped the incubation stage entirely; they now correctly re-enter `Exposed` and progress through incubation like any other infection. Behavior for `SIR`/`SIS` (`Vaccinated → Infected`) is unchanged.
-* **Breaking:** `add_outcome` in `predefined_models.py` now interprets `mortality_rate` / `hospitalization_rate` as the *fraction* of the Infected outflow that goes to Dead / Hospitalized, rescaling the existing Infected outflow (e.g. `Infected → Recovered`) by `(1 - rate)`. Previously these were independent day⁻¹ rates competing with `recovery_rate` for the same Infected pool, which meant `hospitalization_rate=0.02` did not mean "2% of infections are hospitalized" — it meant an extra, independent hazard on top of recovery. This matches the branching-fraction convention already used by `asymptomatic_fraction` in `create_seiar`. Existing code passing `outcome=` will see a behavior change: pass the intended fraction (e.g. `0.02` for "2% hospitalized") rather than a standalone rate.
 * `apply_initial_conditions` in `utils.py` now raises a `ValueError` (surfaced as `RuntimeError: Simulation failed: ...` from `run_simulations`) when `initial_conditions_dict` contains a compartment name not present in the model, instead of silently ignoring the mismatched key and leaving the intended compartment at 0 population for the whole simulation. Fixes [#20](https://github.com/epistorm/epydemix/issues/20).
 * `stochastic_simulation` in `epimodel.py` no longer double-counts recorded transition counts when a model has two or more `Transition` objects sharing the same `(source, target)` pair (e.g. `SEIAR`'s `Susceptible → Exposed`, defined once mediated by `Infected` and once by `Asymptomatic`). The underlying rate accumulation and population updates were always correct; only the `transitions_evolution` bookkeeping loop was re-adding the same combined flow once per contributing `Transition` object. This affects `SEIAR`'s recorded `Susceptible_to_Exposed` trajectory (previously ~2x the true flow) and any user-defined model with a duplicate `(source, target)` transition pair; compartment populations (`compartments_evolution`) were never affected.
+* Fixed a flaky `test_calibration` (`test_tutorial4.py`) that could occasionally fail with `ValueError: pvals < 0, pvals > 1 or pvals contains NaNs`, caused by the unseeded `mock_population` fixture being able to sample a zero-population age group and dividing by zero in the force-of-infection computation. The fixture now samples population sizes from 1 upward instead of 0.
 
 ---
 
