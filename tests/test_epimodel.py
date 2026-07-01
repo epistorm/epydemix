@@ -7,6 +7,7 @@ import numpy as np
 
 from epydemix.model.epimodel import EpiModel, stochastic_simulation
 from epydemix.population import Population
+from epydemix.utils.utils import apply_initial_conditions
 
 # filepath: epydemix/tests/test_epimodel.py
 
@@ -288,3 +289,119 @@ def test_scheduled_transition_eligible_correction():
         f"No-correction model should vaccinate more (got {V_no:.1f}) "
         f"than with-correction model (got {V_with:.1f})"
     )
+
+
+def test_apply_initial_conditions_unknown_compartment(mock_epimodel):
+    """Test apply_initial_conditions raises ValueError for a mistyped/unknown compartment name"""
+    with pytest.raises(ValueError, match="Susceptibl"):
+        apply_initial_conditions(
+            mock_epimodel,
+            {"Susceptibl": np.array([990, 990, 990])},  # typo, missing trailing "e"
+        )
+
+    with pytest.raises(ValueError, match="Bogus"):
+        apply_initial_conditions(mock_epimodel, {"Bogus": np.array([990, 990, 990])})
+
+
+def test_apply_initial_conditions_partial_dict(mock_epimodel):
+    """Test apply_initial_conditions accepts a valid partial dict, defaulting unset compartments to 0"""
+    initial_conditions = apply_initial_conditions(
+        mock_epimodel, {"Infected": np.array([10, 10, 10])}
+    )
+
+    assert initial_conditions.shape == (3, 3)
+    infected_idx = mock_epimodel.compartments_idx["Infected"]
+    susceptible_idx = mock_epimodel.compartments_idx["Susceptible"]
+    assert np.array_equal(initial_conditions[infected_idx], np.array([10, 10, 10]))
+    assert np.array_equal(initial_conditions[susceptible_idx], np.array([0, 0, 0]))
+
+
+def test_run_simulations_unknown_compartment_in_initial_conditions(mock_epimodel):
+    """Test run_simulations surfaces a clear error for a mistyped initial_conditions_dict key"""
+    with pytest.raises(RuntimeError, match="Susceptibl"):
+        mock_epimodel.run_simulations(
+            start_date="2023-01-01",
+            end_date="2023-01-10",
+            initial_conditions_dict={
+                "Susceptibl": np.array([990, 990, 990]),
+                "Infected": np.array([10, 10, 10]),
+                "Recovered": np.array([0, 0, 0]),
+            },
+            Nsim=1,
+        )
+
+
+@pytest.fixture
+def duplicate_pair_epimodel():
+    """Model with two mediated transitions sharing the same (source, target) pair,
+    mirroring SEIAR's Susceptible -> Exposed via Infected and via Asymptomatic."""
+    model = EpiModel(
+        compartments=["Susceptible", "Exposed", "Infected", "Asymptomatic"],
+        parameters={
+            "transmission_rate": 0.3,
+            "transmission_rate_asym": 0.15,
+            "progression_rate": 0.2,
+        },
+    )
+    model.add_transition(
+        "Susceptible", "Exposed", "mediated", ("transmission_rate", "Infected")
+    )
+    model.add_transition(
+        "Susceptible", "Exposed", "mediated", ("transmission_rate_asym", "Asymptomatic")
+    )
+    model.add_transition("Exposed", "Infected", "spontaneous", "progression_rate")
+
+    population = Population()
+    population.add_population([1000, 1000, 1000])
+    population.add_contact_matrix(np.ones((3, 3)))
+    model.set_population(population)
+    return model
+
+
+def test_stochastic_simulation_duplicate_transition_pair_not_double_counted(
+    duplicate_pair_epimodel,
+):
+    """Test that transitions_evolution isn't double-counted when two Transition objects
+    share the same (source, target) pair (e.g. two mediated agents for the same edge)"""
+    T = 20
+    contact_matrices = [
+        {"overall": duplicate_pair_epimodel.population.contact_matrices["all"]}
+        for _ in range(T)
+    ]
+    # shape (n_compartments, n_age_groups) = (4, 3): Susceptible, Exposed, Infected, Asymptomatic
+    initial_conditions = np.array(
+        [[800, 800, 800], [0, 0, 0], [100, 100, 100], [100, 100, 100]]
+    )
+    parameters = {
+        "transmission_rate": np.full(T, 0.3),
+        "transmission_rate_asym": np.full(T, 0.15),
+        "progression_rate": np.full(T, 0.2),
+    }
+
+    compartments_evolution, transitions_evolution = stochastic_simulation(
+        T=T,
+        contact_matrices=contact_matrices,
+        epimodel=duplicate_pair_epimodel,
+        parameters=parameters,
+        initial_conditions=initial_conditions,
+        dt=1.0,
+    )
+
+    susceptible_idx = duplicate_pair_epimodel.compartments_idx["Susceptible"]
+    exposed_idx = duplicate_pair_epimodel.compartments_idx["Exposed"]
+    progression_idx = duplicate_pair_epimodel.transitions_idx["Exposed_to_Infected"]
+    se_idx = duplicate_pair_epimodel.transitions_idx["Susceptible_to_Exposed"]
+
+    # Net change in Exposed equals inflow from Susceptible minus outflow to Infected.
+    # If Susceptible_to_Exposed were double-counted, this identity would fail.
+    exposed_start = initial_conditions[exposed_idx, :].sum()
+    exposed_end = compartments_evolution[-1, exposed_idx].sum()
+    total_inflow = transitions_evolution[:, se_idx].sum()
+    total_outflow = transitions_evolution[:, progression_idx].sum()
+    assert np.isclose(exposed_end - exposed_start, total_inflow - total_outflow)
+
+    # Total Susceptible_to_Exposed recorded flow must equal actual Susceptible depletion
+    # (net of any inflow to Susceptible, of which there is none in this model).
+    susceptible_start = initial_conditions[susceptible_idx, :].sum()
+    susceptible_end = compartments_evolution[-1, susceptible_idx].sum()
+    assert np.isclose(susceptible_start - susceptible_end, total_inflow)

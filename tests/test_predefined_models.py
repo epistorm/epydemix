@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from epydemix.model.epimodel import stochastic_simulation
 from epydemix.model.predefined_models import (
     SUPPORTED_MODELS,
     add_outcome,
@@ -226,6 +227,55 @@ def test_seiar_model(basic_population):
     assert np.allclose(total_population, 10000)
 
 
+def test_seiar_model_transition_counts_not_double_counted(basic_population):
+    """Test that Susceptible_to_Exposed transition counts (mediated by both Infected and
+    Asymptomatic) aren't double-counted, since both share the same (source, target) pair"""
+    model = create_seiar(
+        transmission_rate=0.3,
+        incubation_rate=0.2,
+        recovery_rate=0.1,
+        asymptomatic_fraction=0.4,
+        asymptomatic_recovery_rate=0.14,
+        asymptomatic_relative_infectivity=0.5,
+    )
+    model.set_population(basic_population)
+
+    T = 30
+    contact_matrices = [
+        {"overall": basic_population.contact_matrices["all"]} for _ in range(T)
+    ]
+    initial_conditions = np.zeros((len(model.compartments), 1))
+    for comp, value in [
+        ("Susceptible", 9800),
+        ("Exposed", 100),
+        ("Infected", 100),
+        ("Asymptomatic", 0),
+        ("Recovered", 0),
+    ]:
+        initial_conditions[model.compartments_idx[comp]] = value
+    parameters = {name: np.full(T, value) for name, value in model.parameters.items()}
+
+    compartments_evolution, transitions_evolution = stochastic_simulation(
+        T=T,
+        contact_matrices=contact_matrices,
+        epimodel=model,
+        parameters=parameters,
+        initial_conditions=initial_conditions,
+        dt=1.0,
+    )
+
+    susceptible_idx = model.compartments_idx["Susceptible"]
+    se_idx = model.transitions_idx["Susceptible_to_Exposed"]
+    susceptible_start = initial_conditions[susceptible_idx].sum()
+    susceptible_end = compartments_evolution[-1, susceptible_idx].sum()
+    total_se_flow = transitions_evolution[:, se_idx].sum()
+
+    # Susceptible only ever depletes into Exposed in this model (no waning),
+    # so the recorded S->E flow must equal the actual Susceptible depletion,
+    # not double it.
+    assert np.isclose(susceptible_start - susceptible_end, total_se_flow)
+
+
 def test_waning_immunity_module(basic_population):
     """Test add_waning_immunity adds R → S transition and respects guard rails"""
     model = create_sir(transmission_rate=0.3, recovery_rate=0.1)
@@ -278,6 +328,50 @@ def test_vaccination_module(basic_population):
     )
 
 
+def test_vaccination_module_with_exposed_backbone(basic_population):
+    """Test add_vaccination routes breakthrough infections to Exposed when the backbone has one"""
+    seir_model = create_seir(
+        transmission_rate=0.3, incubation_rate=0.2, recovery_rate=0.1
+    )
+    seir_model = add_vaccination(
+        seir_model, vaccination_rate=0.01, vaccine_efficacy=0.9
+    )
+
+    seir_transitions = {(t.source, t.target) for t in seir_model.transitions_list}
+    assert ("Vaccinated", "Exposed") in seir_transitions
+    assert ("Vaccinated", "Infected") not in seir_transitions
+
+    seiar_model = create_seiar(
+        transmission_rate=0.3,
+        incubation_rate=0.2,
+        recovery_rate=0.1,
+        asymptomatic_fraction=0.4,
+        asymptomatic_recovery_rate=0.14,
+        asymptomatic_relative_infectivity=0.5,
+    )
+    seiar_model = add_vaccination(
+        seiar_model, vaccination_rate=0.01, vaccine_efficacy=0.9
+    )
+
+    seiar_transitions = {(t.source, t.target) for t in seiar_model.transitions_list}
+    assert ("Vaccinated", "Exposed") in seiar_transitions
+    assert ("Vaccinated", "Infected") not in seiar_transitions
+
+    seir_model.set_population(basic_population)
+    seir_model.run_simulations(
+        start_date="2023-01-01",
+        end_date="2023-01-10",
+        initial_conditions_dict={
+            "Susceptible": np.array([9900]),
+            "Exposed": np.array([0]),
+            "Infected": np.array([100]),
+            "Recovered": np.array([0]),
+            "Vaccinated": np.array([0]),
+        },
+        Nsim=5,
+    )
+
+
 def test_outcome_deaths_module(basic_population):
     """Test add_outcome with deaths adds Dead compartment and I → Dead transition"""
     model = create_sir(transmission_rate=0.3, recovery_rate=0.1)
@@ -291,8 +385,14 @@ def test_outcome_deaths_module(basic_population):
 
     assert "Dead" in model.compartments
     assert model.parameters["mortality_rate"] == 0.01
-    transitions = {(t.source, t.target) for t in model.transitions_list}
-    assert ("Infected", "Dead") in transitions
+    recovered_transition = next(
+        t for t in model.transitions_list if t.target == "Recovered"
+    )
+    dead_transition = next(t for t in model.transitions_list if t.target == "Dead")
+    assert recovered_transition.source == "Infected"
+    assert recovered_transition.params == "recovery_rate * (1 - mortality_rate)"
+    assert dead_transition.source == "Infected"
+    assert dead_transition.params == "recovery_rate * mortality_rate"
 
     model.set_population(basic_population)
     model.run_simulations(
@@ -322,9 +422,22 @@ def test_outcome_hospitalization_module(basic_population):
     assert "Hospitalized" in model.compartments
     assert model.parameters["hospitalization_rate"] == 0.05
     assert model.parameters["hospitalization_recovery_rate"] == 0.1
-    transitions = {(t.source, t.target) for t in model.transitions_list}
-    assert ("Infected", "Hospitalized") in transitions
-    assert ("Hospitalized", "Recovered") in transitions
+    recovered_transition = next(
+        t
+        for t in model.transitions_list
+        if t.source == "Infected" and t.target == "Recovered"
+    )
+    hospitalized_transition = next(
+        t for t in model.transitions_list if t.target == "Hospitalized"
+    )
+    hospitalized_recovered_transition = next(
+        t for t in model.transitions_list if t.source == "Hospitalized"
+    )
+    assert recovered_transition.params == "recovery_rate * (1 - hospitalization_rate)"
+    assert hospitalized_transition.source == "Infected"
+    assert hospitalized_transition.params == "recovery_rate * hospitalization_rate"
+    assert hospitalized_recovered_transition.target == "Recovered"
+    assert hospitalized_recovered_transition.params == "hospitalization_recovery_rate"
 
     with pytest.raises(ValueError, match="'Recovered'"):
         add_outcome(
@@ -344,6 +457,41 @@ def test_outcome_hospitalization_module(basic_population):
             "Infected": np.array([100]),
             "Recovered": np.array([0]),
             "Hospitalized": np.array([0]),
+        },
+        Nsim=5,
+    )
+
+
+def test_outcome_deaths_module_sis_backbone(basic_population):
+    """Test add_outcome with deaths on SIS rescales the Infected -> Susceptible transition"""
+    model = create_sis(transmission_rate=0.3, recovery_rate=0.1)
+    model = add_outcome(
+        model,
+        "deaths",
+        mortality_rate=0.02,
+        hospitalization_rate=0.0,
+        hospitalization_recovery_rate=0.0,
+    )
+
+    assert "Dead" in model.compartments
+    recovered_transition = next(
+        t
+        for t in model.transitions_list
+        if t.source == "Infected" and t.target == "Susceptible"
+    )
+    dead_transition = next(t for t in model.transitions_list if t.target == "Dead")
+    assert recovered_transition.params == "recovery_rate * (1 - mortality_rate)"
+    assert dead_transition.source == "Infected"
+    assert dead_transition.params == "recovery_rate * mortality_rate"
+
+    model.set_population(basic_population)
+    model.run_simulations(
+        start_date="2023-01-01",
+        end_date="2023-01-10",
+        initial_conditions_dict={
+            "Susceptible": np.array([9900]),
+            "Infected": np.array([100]),
+            "Dead": np.array([0]),
         },
         Nsim=5,
     )

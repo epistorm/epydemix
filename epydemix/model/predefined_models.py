@@ -48,12 +48,15 @@ def load_predefined_model(
         waning_immunity (bool): Add waning immunity (R → S). Not compatible with SIS. Default False.
         waning_rate (float): Rate of immunity waning. Default 1/365 (~1 year). Interpreted as the inverse
             of the average immunity duration in days.
-        vaccination (bool): Add vaccination compartment (S → Vaccinated → Infected at reduced rate). Default False.
+        vaccination (bool): Add vaccination compartment (S → Vaccinated → Infected/Exposed at reduced rate;
+            breakthrough infections go to Exposed if the backbone has an Exposed compartment, otherwise Infected). Default False.
         vaccination_rate (float): Rate of vaccination from Susceptible. Default 0.01.
         vaccine_efficacy (float): Fraction by which vaccine reduces transmission. Default 0.9.
         outcome (str or None): Track a disease outcome. One of None, "deaths", "hospitalization". Default None.
-        mortality_rate (float): Rate of death from Infected. Used when outcome="deaths". Default 0.01.
-        hospitalization_rate (float): Rate of hospitalization from Infected. Used when outcome="hospitalization". Default 0.01.
+        mortality_rate (float): Fraction of the Infected outflow that goes to Dead, rescaling the existing
+            Infected outflow (e.g. recovery_rate) by (1 - mortality_rate). Used when outcome="deaths". Default 0.01.
+        hospitalization_rate (float): Fraction of the Infected outflow that goes to Hospitalized, rescaling
+            recovery_rate by (1 - hospitalization_rate). Used when outcome="hospitalization". Default 0.01.
         hospitalization_recovery_rate (float): Rate of recovery from Hospitalized. Used when outcome="hospitalization". Default 0.1.
 
     All rate parameters accept scalars, 1D arrays of shape (T,) for time-varying values, or 2D arrays
@@ -298,7 +301,7 @@ def add_waning_immunity(model: EpiModel, waning_rate: float) -> EpiModel:
 def add_vaccination(
     model: EpiModel, vaccination_rate: float, vaccine_efficacy: float
 ) -> EpiModel:
-    """Add a vaccination compartment (Susceptible → Vaccinated → Infected at reduced rate)."""
+    """Add a vaccination compartment (Susceptible → Vaccinated → Infected/Exposed at reduced rate)."""
     model.add_compartments(["Vaccinated"])
     model.add_parameter("vaccination_rate", vaccination_rate)
     model.add_parameter("vaccine_efficacy", vaccine_efficacy)
@@ -308,9 +311,10 @@ def add_vaccination(
         params="vaccination_rate",
         kind="spontaneous",
     )
+    breakthrough_target = "Exposed" if "Exposed" in model.compartments else "Infected"
     model.add_transition(
         source="Vaccinated",
-        target="Infected",
+        target=breakthrough_target,
         params=("transmission_rate * (1 - vaccine_efficacy)", "Infected"),
         kind="mediated",
     )
@@ -326,14 +330,26 @@ def add_outcome(
     hospitalization_rate: float,
     hospitalization_recovery_rate: float,
 ) -> EpiModel:
-    """Add an outcome compartment (Dead or Hospitalized) branching from the Infected compartment."""
+    """Add an outcome compartment (Dead or Hospitalized) branching from the Infected compartment.
+
+    mortality_rate / hospitalization_rate are the fraction of the Infected outflow that goes to
+    Dead / Hospitalized; the existing Infected outflow (e.g. Infected -> Recovered) is rescaled
+    by (1 - rate) accordingly.
+    """
+    recovery_transition = next(
+        t
+        for t in model.transitions_list
+        if t.source == "Infected" and t.kind == "spontaneous"
+    )
+
     if outcome == "deaths":
         model.add_compartments(["Dead"])
         model.add_parameter("mortality_rate", mortality_rate)
+        recovery_transition.params = "recovery_rate * (1 - mortality_rate)"
         model.add_transition(
             source="Infected",
             target="Dead",
-            params="mortality_rate",
+            params="recovery_rate * mortality_rate",
             kind="spontaneous",
         )
     elif outcome == "hospitalization":
@@ -347,10 +363,11 @@ def add_outcome(
         model.add_parameter(
             "hospitalization_recovery_rate", hospitalization_recovery_rate
         )
+        recovery_transition.params = "recovery_rate * (1 - hospitalization_rate)"
         model.add_transition(
             source="Infected",
             target="Hospitalized",
-            params="hospitalization_rate",
+            params="recovery_rate * hospitalization_rate",
             kind="spontaneous",
         )
         model.add_transition(
