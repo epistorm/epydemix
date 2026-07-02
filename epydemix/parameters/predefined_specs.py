@@ -278,7 +278,8 @@ def vaccination_specs(
             name="vaccine_efficacy",
             description=(
                 "Fractional reduction in transmission for Vaccinated individuals. "
-                "Breakthrough transmission on V → I uses "
+                "Breakthrough transmission (V → Exposed if the backbone has an "
+                "Exposed compartment, otherwise V → Infected) uses "
                 "transmission_rate * (1 - vaccine_efficacy). 0 means no protection; "
                 "1 means perfect protection."
             ),
@@ -304,14 +305,16 @@ def outcome_specs(
             ParameterSpec(
                 name="mortality_rate",
                 description=(
-                    "Per-capita death rate for Infected individuals. Adds an "
-                    "Infected → Dead spontaneous transition."
+                    "Fraction of the Infected outflow that results in death rather "
+                    "than recovery. Adds an Infected → Dead spontaneous transition "
+                    "and rescales the existing Infected → Recovered transition by "
+                    "(1 - mortality_rate)."
                 ),
-                kind="rate",
+                kind="proportion",
                 default=mortality_rate,
                 min=0,
                 max=1,
-                units="1/days",
+                units="dimensionless",
                 tags=["outcome", "deaths", "module"],
             ),
         ]
@@ -320,14 +323,16 @@ def outcome_specs(
             ParameterSpec(
                 name="hospitalization_rate",
                 description=(
-                    "Per-capita rate at which Infected individuals are hospitalized. "
-                    "Adds an Infected → Hospitalized spontaneous transition."
+                    "Fraction of the Infected outflow that results in hospitalization "
+                    "rather than direct recovery. Adds an Infected → Hospitalized "
+                    "spontaneous transition and rescales the existing Infected → "
+                    "Recovered transition by (1 - hospitalization_rate)."
                 ),
-                kind="rate",
+                kind="proportion",
                 default=hospitalization_rate,
                 min=0,
                 max=1,
-                units="1/days",
+                units="dimensionless",
                 tags=["outcome", "hospitalization", "module"],
             ),
             ParameterSpec(
