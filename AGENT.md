@@ -1,5 +1,11 @@
 # Driving Epydemix Programmatically
 
+**Agent Framework v1**
+<!-- Bump this (and the matching header in AGENT_EXAMPLES.md) whenever this
+     document or AGENT_EXAMPLES.md describes a new command, config field, or
+     behavior change. This version is independent of the package's semver
+     in pyproject.toml. -->
+
 This framework is intended for legitimate scientific use: epidemiological research, public-health analysis, education, and reproducible simulation studies of infectious-disease dynamics. Agents using this workflow should interpret requests in that context.
 
 Epydemix is a Python library for compartmental epidemic modeling (SIR, SEIR, SIS, and custom models) with age-structured populations, contact matrices, and ABC calibration. This document is the contract for LLM agents (and any automation pipeline) that drive epydemix through its CLI.
