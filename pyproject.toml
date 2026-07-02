@@ -31,6 +31,11 @@ dependencies = [
     "setuptools>=68.2.0"
 ]
 
+[project.optional-dependencies]
+numba = [
+    "numba>=0.57.0",
+]
+
 [project.urls]
 # Optional links related to your project
 homepage = "https://epydemix.org"  
