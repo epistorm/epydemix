@@ -1,13 +1,11 @@
 """Build manifest.json metadata from simulation and calibration results."""
 
-import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
-
-from importlib.metadata import version, PackageNotFoundError
 
 
 def _get_version() -> str:
@@ -75,17 +73,17 @@ def build_simulation_manifest(
     n_sims = results.Nsim
 
     # Extract base compartment names (without demographic suffixes)
-    base_compartments = sorted(set(
-        name.rsplit("_", 1)[0] for name in comp_names
-        if name.endswith("_total")
-    ))
+    base_compartments = sorted(
+        set(name.rsplit("_", 1)[0] for name in comp_names if name.endswith("_total"))
+    )
 
     # Demographic groups from non-total compartment names
     demo_groups = []
     if base_compartments:
         prefix = base_compartments[0] + "_"
         demo_groups = [
-            name[len(prefix):] for name in comp_names
+            name[len(prefix) :]
+            for name in comp_names
             if name.startswith(prefix) and not name.endswith("_total")
         ]
 
@@ -113,7 +111,10 @@ def build_simulation_manifest(
                 "shape": [n_sims * n_timesteps, len(comp_names) + 2],
                 "index": ["sim_id", "date"],
                 "columns": {
-                    "sim_id": {"dtype": "int32", "description": "Simulation index (0 to n_simulations-1)"},
+                    "sim_id": {
+                        "dtype": "int32",
+                        "description": "Simulation index (0 to n_simulations-1)",
+                    },
                     "date": {"dtype": "date", "description": "Simulation date"},
                     **{name: {"dtype": "float64"} for name in comp_names},
                 },
@@ -226,7 +227,7 @@ def build_calibration_manifest(
             "weights": {
                 "path": "weights.parquet",
                 "description": "Particle weights per generation "
-                               "(used for posterior-weighted sampling in projections).",
+                "(used for posterior-weighted sampling in projections).",
                 "columns": {
                     "generation": {"dtype": "int32"},
                     "particle_id": {"dtype": "int32"},
@@ -236,8 +237,8 @@ def build_calibration_manifest(
             "trajectories": {
                 "path": "trajectories.parquet",
                 "description": "Accepted simulated trajectories (last generation). "
-                               "Long format: [sim_id, timestep, variable, value]. "
-                               "Use `epydemix inspect <bundle> fit` to query.",
+                "Long format: [sim_id, timestep, variable, value]. "
+                "Use `epydemix inspect <bundle> fit` to query.",
                 "columns": {
                     "sim_id": {"dtype": "int64"},
                     "timestep": {"dtype": "int64"},
@@ -248,7 +249,7 @@ def build_calibration_manifest(
             "observed_data": {
                 "path": "observed_data.parquet",
                 "description": "Observed data used for calibration. "
-                               "Long format: [timestep, variable, value].",
+                "Long format: [timestep, variable, value].",
                 "columns": {
                     "timestep": {"dtype": "int64"},
                     "variable": {"dtype": "str"},

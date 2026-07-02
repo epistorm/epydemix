@@ -1,7 +1,7 @@
 """Load disease-specific default parameter sets from YAML files."""
 
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -110,7 +110,9 @@ class DefaultParameterSet:
         }
 
 
-def load_defaults(disease: str, defaults_dir: Optional[str] = None) -> DefaultParameterSet:
+def load_defaults(
+    disease: str, defaults_dir: Optional[str] = None
+) -> DefaultParameterSet:
     """Load a default parameter set by disease name.
 
     Args:
@@ -167,6 +169,5 @@ def get_available_defaults(defaults_dir: Optional[str] = None) -> List[str]:
     if not search_dir.exists():
         return []
     return sorted(
-        f.stem for f in search_dir.glob("*.yaml")
-        if not f.name.startswith("_")
+        f.stem for f in search_dir.glob("*.yaml") if not f.name.startswith("_")
     )

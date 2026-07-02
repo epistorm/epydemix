@@ -7,7 +7,6 @@ and returns a compact dictionary suitable for JSON serialization to stdout.
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 from .bundle import load_bundle, load_bundle_dataframe
@@ -40,8 +39,7 @@ def inspect_bundle(
 
     if command not in commands:
         raise ValueError(
-            f"Unknown inspect command '{command}'. "
-            f"Available: {list(commands.keys())}"
+            f"Unknown inspect command '{command}'. Available: {list(commands.keys())}"
         )
 
     return commands[command](path, **kwargs)
@@ -50,6 +48,7 @@ def inspect_bundle(
 # ---------------------------------------------------------------------------
 # Time-slice helper
 # ---------------------------------------------------------------------------
+
 
 def _apply_time_slice(
     df: pd.DataFrame,
@@ -126,6 +125,7 @@ def _resolve_variables(
 # Commands
 # ---------------------------------------------------------------------------
 
+
 def _cmd_manifest(path: str, **kwargs) -> Dict[str, Any]:
     """Return the manifest."""
     return load_bundle(path)
@@ -201,7 +201,6 @@ def _cmd_summary(
     result = {}
     for var in variables:
         pivoted = df.pivot(index="date", columns="sim_id", values=var)
-        dates = pivoted.index
 
         # Peak: per-simulation max, then quantiles of peak values and dates
         peak_values = pivoted.max(axis=0)
@@ -215,7 +214,9 @@ def _cmd_summary(
         n_peaks = len(peak_dates_sorted)
 
         var_summary = {
-            "peak_date_median": str(peak_dates_sorted.iloc[n_peaks // 2])[:10] if n_peaks > 0 else None,
+            "peak_date_median": str(peak_dates_sorted.iloc[n_peaks // 2])[:10]
+            if n_peaks > 0
+            else None,
             "peak_value": {
                 "0.05": float(peak_values.quantile(0.05)),
                 "0.50": float(peak_values.quantile(0.50)),
@@ -264,9 +265,13 @@ def _cmd_peak(
 
         result[var] = {
             "peak_date": {
-                "0.05": str(sorted_dates.iloc[max(0, int(0.05 * n))])[:10] if n > 0 else None,
+                "0.05": str(sorted_dates.iloc[max(0, int(0.05 * n))])[:10]
+                if n > 0
+                else None,
                 "0.50": str(sorted_dates.iloc[int(0.5 * n)])[:10] if n > 0 else None,
-                "0.95": str(sorted_dates.iloc[min(n - 1, int(0.95 * n))])[:10] if n > 0 else None,
+                "0.95": str(sorted_dates.iloc[min(n - 1, int(0.95 * n))])[:10]
+                if n > 0
+                else None,
             },
             "peak_value": {
                 "0.05": float(peak_values.quantile(0.05)),
@@ -385,9 +390,7 @@ def _cmd_fit(
         obs_dict: Dict[str, Any] = {}
         for var_name, grp in observed.groupby("variable"):
             grp_sorted = grp.sort_values("timestep")
-            obs_dict[str(var_name)] = [
-                float(v) for v in grp_sorted["value"].values
-            ]
+            obs_dict[str(var_name)] = [float(v) for v in grp_sorted["value"].values]
         result["observed"] = obs_dict
 
     return result
@@ -401,11 +404,13 @@ def _cmd_fit(
 # (comp_df, manifest, **kwargs) and returns a dict with "value" and
 # optionally "ci90" (a two-element list).
 
+
 def _metric_attack_rate(comp, manifest, **kw):
     """Fraction of population ever infected (recovered + dead)."""
     # Find terminal compartments (R-like + D-like)
-    total_cols = [c for c in comp.columns if c.endswith("_total")
-                  and c not in ("sim_id", "date")]
+    total_cols = [
+        c for c in comp.columns if c.endswith("_total") and c not in ("sim_id", "date")
+    ]
     # Heuristic: susceptible is the only compartment that decreases monotonically
     # Attack rate = 1 - S_final / S_initial
     s_col = None
@@ -421,8 +426,10 @@ def _metric_attack_rate(comp, manifest, **kw):
     attack = 1.0 - last_day / first_day
     return {
         "median": float(attack.median()) * 100,
-        "ci90": [float(attack.quantile(0.05)) * 100,
-                 float(attack.quantile(0.95)) * 100],
+        "ci90": [
+            float(attack.quantile(0.05)) * 100,
+            float(attack.quantile(0.95)) * 100,
+        ],
         "units": "percent",
     }
 
@@ -435,8 +442,7 @@ def _metric_peak(comp, manifest, variable=None, **kw):
     peaks = comp.groupby("sim_id")[var].max()
     return {
         "median": float(peaks.median()),
-        "ci90": [float(peaks.quantile(0.05)),
-                 float(peaks.quantile(0.95))],
+        "ci90": [float(peaks.quantile(0.05)), float(peaks.quantile(0.95))],
         "variable": var,
     }
 
@@ -457,7 +463,9 @@ def _metric_peak_date(comp, manifest, variable=None, **kw):
         "ci90": [
             str(peak_dates.iloc[max(0, int(0.05 * n))])[:10],
             str(peak_dates.iloc[min(n - 1, int(0.95 * n))])[:10],
-        ] if n > 0 else None,
+        ]
+        if n > 0
+        else None,
         "variable": var,
     }
 
@@ -474,8 +482,7 @@ def _metric_total_deaths(comp, manifest, **kw):
     final = comp.groupby("sim_id")[d_col].last()
     return {
         "median": float(final.median()),
-        "ci90": [float(final.quantile(0.05)),
-                 float(final.quantile(0.95))],
+        "ci90": [float(final.quantile(0.05)), float(final.quantile(0.95))],
         "variable": d_col,
     }
 
@@ -505,8 +512,7 @@ def _metric_final_value(comp, manifest, variable=None, **kw):
     final = comp.groupby("sim_id")[var].last()
     return {
         "median": float(final.median()),
-        "ci90": [float(final.quantile(0.05)),
-                 float(final.quantile(0.95))],
+        "ci90": [float(final.quantile(0.05)), float(final.quantile(0.95))],
         "variable": var,
     }
 
@@ -569,8 +575,7 @@ def compare_bundles(
     for name, _ in parsed_metrics:
         if name not in COMPARE_METRICS:
             raise ValueError(
-                f"Unknown metric '{name}'. "
-                f"Available: {list(COMPARE_METRICS.keys())}"
+                f"Unknown metric '{name}'. Available: {list(COMPARE_METRICS.keys())}"
             )
 
     result = {}

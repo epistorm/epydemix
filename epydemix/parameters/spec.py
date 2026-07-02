@@ -3,9 +3,15 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-
 # Valid values for the 'kind' field
-PARAMETER_KINDS = ("rate", "probability", "count", "duration", "proportion", "dimensionless")
+PARAMETER_KINDS = (
+    "rate",
+    "probability",
+    "count",
+    "duration",
+    "proportion",
+    "dimensionless",
+)
 
 # Valid values for the 'dtype' field
 PARAMETER_DTYPES = ("float", "int", "array")

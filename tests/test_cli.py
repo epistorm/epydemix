@@ -2,22 +2,26 @@
 
 import json
 import os
-import tempfile
 
 import numpy as np
 import pytest
 from click.testing import CliRunner
 
 from epydemix import load_predefined_model
+from epydemix.cli.config import (
+    build_initial_conditions,
+    build_model_from_config,
+    load_config,
+    validate_config,
+)
 from epydemix.cli.main import cli
-from epydemix.cli.config import load_config, validate_config, build_model_from_config, build_initial_conditions
 from epydemix.io.bundle import save_bundle
 from epydemix.population import Population
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _simple_population():
     pop = Population()
@@ -61,6 +65,7 @@ MINIMAL_CONFIG = {
 
 def _write_yaml(tmp_path, cfg, name="config.yaml"):
     import yaml
+
     path = tmp_path / name
     with open(path, "w") as f:
         yaml.dump(cfg, f)
@@ -77,6 +82,7 @@ def _write_json(tmp_path, cfg, name="config.json"):
 # ---------------------------------------------------------------------------
 # Config loader tests
 # ---------------------------------------------------------------------------
+
 
 class TestLoadConfig:
     def test_load_yaml(self, tmp_path):
@@ -159,6 +165,7 @@ class TestBuildModel:
 # build_initial_conditions tests
 # ---------------------------------------------------------------------------
 
+
 def _multi_group_model():
     """SIR model with a 3-group age-structured population for IC tests."""
     model = load_predefined_model("SIR", transmission_rate=0.3, recovery_rate=0.1)
@@ -173,24 +180,34 @@ def _multi_group_model():
 
 
 class TestBuildInitialConditions:
-
     def test_scalar_broadcast(self):
         """Scalar fraction is applied uniformly to every group (existing behaviour)."""
         model = _multi_group_model()
-        cfg = {"initial_conditions": {"Susceptible": 0.9, "Infected": 0.1, "Recovered": 0.0}}
+        cfg = {
+            "initial_conditions": {
+                "Susceptible": 0.9,
+                "Infected": 0.1,
+                "Recovered": 0.0,
+            }
+        }
         ic = build_initial_conditions(cfg, model)
         np.testing.assert_allclose(ic["Susceptible"], [9_000, 18_000, 4_500])
-        np.testing.assert_allclose(ic["Infected"],    [1_000,  2_000,   500])
+        np.testing.assert_allclose(ic["Infected"], [1_000, 2_000, 500])
 
     def test_dict_default_only_equals_scalar(self):
         """A dict with only a 'default' key produces the same result as a scalar."""
         model = _multi_group_model()
         cfg_scalar = {"initial_conditions": {"Susceptible": 0.8, "Recovered": 0.2}}
-        cfg_dict   = {"initial_conditions": {"Susceptible": {"default": 0.8}, "Recovered": {"default": 0.2}}}
+        cfg_dict = {
+            "initial_conditions": {
+                "Susceptible": {"default": 0.8},
+                "Recovered": {"default": 0.2},
+            }
+        }
         ic_s = build_initial_conditions(cfg_scalar, model)
         ic_d = build_initial_conditions(cfg_dict, model)
         np.testing.assert_allclose(ic_s["Susceptible"], ic_d["Susceptible"])
-        np.testing.assert_allclose(ic_s["Recovered"],   ic_d["Recovered"])
+        np.testing.assert_allclose(ic_s["Recovered"], ic_d["Recovered"])
 
     def test_dict_group_override(self):
         """Named group gets its specific fraction; others get the default."""
@@ -198,7 +215,7 @@ class TestBuildInitialConditions:
         cfg = {
             "initial_conditions": {
                 "Susceptible": {"default": 1.0, "elderly": 0.25},
-                "Recovered":   {"default": 0.0, "elderly": 0.75},
+                "Recovered": {"default": 0.0, "elderly": 0.75},
                 "Infected": 0.0,
             }
         }
@@ -225,7 +242,7 @@ class TestBuildInitialConditions:
         model = _multi_group_model()
         cfg = {
             "initial_conditions": {
-                "Infected": 0.01,                        # scalar
+                "Infected": 0.01,  # scalar
                 "Recovered": {"default": 0.0, "elderly": 0.5},  # dict
                 "Susceptible": {"default": 0.99, "elderly": 0.49},
             }
@@ -250,12 +267,20 @@ class TestBuildInitialConditions:
             "Infected": 0.01,
         }
         result = validate_config(cfg)
-        assert not result["valid"] or any("must be a number" in e for e in result["errors"])
+        assert not result["valid"] or any(
+            "must be a number" in e for e in result["errors"]
+        )
 
     def test_flat_population_scalar_unaffected(self):
         """Flat (single-group) populations still work with plain scalar fractions."""
         model = build_model_from_config(MINIMAL_CONFIG)
-        cfg = {"initial_conditions": {"Susceptible": 0.99, "Infected": 0.01, "Recovered": 0.0}}
+        cfg = {
+            "initial_conditions": {
+                "Susceptible": 0.99,
+                "Infected": 0.01,
+                "Recovered": 0.0,
+            }
+        }
         ic = build_initial_conditions(cfg, model)
         assert ic["Susceptible"][0] == pytest.approx(99_000)  # default pop = 100 000
         assert ic["Infected"][0] == pytest.approx(1_000)
@@ -263,7 +288,13 @@ class TestBuildInitialConditions:
     def test_case_insensitive_compartment_name(self):
         """Compartment names in initial_conditions are matched case-insensitively."""
         model = _multi_group_model()
-        cfg = {"initial_conditions": {"susceptible": 0.9, "infected": 0.1, "recovered": 0.0}}
+        cfg = {
+            "initial_conditions": {
+                "susceptible": 0.9,
+                "infected": 0.1,
+                "recovered": 0.0,
+            }
+        }
         ic = build_initial_conditions(cfg, model)
         assert "Susceptible" in ic
         assert "Infected" in ic
@@ -273,7 +304,11 @@ class TestBuildInitialConditions:
     def test_validate_catches_scalar_sum_above_one(self):
         """validate_config errors when all-scalar fractions sum to > 1."""
         cfg = dict(MINIMAL_CONFIG)
-        cfg["initial_conditions"] = {"Susceptible": 0.8, "Infected": 0.5, "Recovered": 0.0}
+        cfg["initial_conditions"] = {
+            "Susceptible": 0.8,
+            "Infected": 0.5,
+            "Recovered": 0.0,
+        }
         result = validate_config(cfg)
         assert not result["valid"]
         assert any("sum" in e for e in result["errors"])
@@ -281,7 +316,11 @@ class TestBuildInitialConditions:
     def test_validate_catches_scalar_sum_below_one(self):
         """validate_config errors when all-scalar fractions sum to < 1."""
         cfg = dict(MINIMAL_CONFIG)
-        cfg["initial_conditions"] = {"Susceptible": 0.5, "Infected": 0.1, "Recovered": 0.0}
+        cfg["initial_conditions"] = {
+            "Susceptible": 0.5,
+            "Infected": 0.1,
+            "Recovered": 0.0,
+        }
         result = validate_config(cfg)
         assert not result["valid"]
         assert any("sum" in e for e in result["errors"])
@@ -290,7 +329,10 @@ class TestBuildInitialConditions:
         """validate_config errors when the default path sums to != 1 in a mixed config."""
         cfg = dict(MINIMAL_CONFIG)
         cfg["initial_conditions"] = {
-            "Susceptible": {"default": 1.0, "elderly": 0.25},  # default path: 1.0 + 0.1 = 1.1
+            "Susceptible": {
+                "default": 1.0,
+                "elderly": 0.25,
+            },  # default path: 1.0 + 0.1 = 1.1
             "Infected": 0.1,
             "Recovered": {"default": 0.0, "elderly": 0.75},
         }
@@ -302,7 +344,10 @@ class TestBuildInitialConditions:
         """validate_config errors when a named-group path sums to != 1."""
         cfg = dict(MINIMAL_CONFIG)
         cfg["initial_conditions"] = {
-            "Susceptible": {"default": 0.9, "elderly": 0.3},  # elderly: 0.3 + 0.1 + 0.7 = 1.1
+            "Susceptible": {
+                "default": 0.9,
+                "elderly": 0.3,
+            },  # elderly: 0.3 + 0.1 + 0.7 = 1.1
             "Infected": 0.1,
             "Recovered": {"default": 0.0, "elderly": 0.7},
         }
@@ -339,6 +384,7 @@ class TestBuildInitialConditions:
 # ---------------------------------------------------------------------------
 # CLI command tests (using Click's CliRunner)
 # ---------------------------------------------------------------------------
+
 
 class TestCLIModels:
     def test_models_command(self):
@@ -445,11 +491,18 @@ class TestCLIInspect:
     def test_inspect_quantiles(self, tmp_path):
         bundle = _make_bundle(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "inspect", bundle, "quantiles",
-            "-v", "Infected_total",
-            "-q", "0.05,0.5,0.95",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "inspect",
+                bundle,
+                "quantiles",
+                "-v",
+                "Infected_total",
+                "-q",
+                "0.05,0.5,0.95",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "dates" in data
@@ -458,7 +511,9 @@ class TestCLIInspect:
     def test_inspect_summary(self, tmp_path):
         bundle = _make_bundle(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(cli, ["inspect", bundle, "summary", "-v", "Infected_total"])
+        result = runner.invoke(
+            cli, ["inspect", bundle, "summary", "-v", "Infected_total"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "Infected_total" in data
@@ -475,12 +530,20 @@ class TestCLIInspect:
     def test_inspect_csv_format(self, tmp_path):
         bundle = _make_bundle(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "inspect", bundle, "quantiles",
-            "-v", "Infected_total",
-            "-q", "0.5",
-            "--format", "csv",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "inspect",
+                bundle,
+                "quantiles",
+                "-v",
+                "Infected_total",
+                "-q",
+                "0.5",
+                "--format",
+                "csv",
+            ],
+        )
         assert result.exit_code == 0
         # CSV output should have headers with "date"
         lines = result.output.strip().split("\n")
@@ -489,12 +552,20 @@ class TestCLIInspect:
     def test_inspect_time_slice(self, tmp_path):
         bundle = _make_bundle(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "inspect", bundle, "quantiles",
-            "-v", "Infected_total",
-            "--start", "2023-01-05",
-            "--end", "2023-01-15",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "inspect",
+                bundle,
+                "quantiles",
+                "-v",
+                "Infected_total",
+                "--start",
+                "2023-01-05",
+                "--end",
+                "2023-01-15",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         dates = data["dates"]
@@ -511,6 +582,7 @@ class TestCLIInspect:
 # ---------------------------------------------------------------------------
 # Config inheritance tests
 # ---------------------------------------------------------------------------
+
 
 class TestConfigInheritance:
     def test_simple_inheritance(self, tmp_path):
@@ -537,6 +609,7 @@ class TestConfigInheritance:
         overlay_path = _write_yaml(tmp_path, overlay_cfg, "overlay.yaml")
 
         from epydemix.cli.config import load_config
+
         config = load_config(overlay_path)
 
         # Model and simulation inherited
@@ -556,21 +629,30 @@ class TestConfigInheritance:
             "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-30"},
             "parameters": {"transmission_rate": 0.3, "recovery_rate": 0.1},
             "overrides": [
-                {"parameter": "transmission_rate", "start_date": "2023-01-10",
-                 "end_date": "2023-01-20", "value": 0.1},
+                {
+                    "parameter": "transmission_rate",
+                    "start_date": "2023-01-10",
+                    "end_date": "2023-01-20",
+                    "value": 0.1,
+                },
             ],
         }
         overlay_cfg = {
             "base": "base.yaml",
             "overrides": [
-                {"parameter": "transmission_rate", "start_date": "2023-01-15",
-                 "end_date": "2023-01-25", "value": 0.2},
+                {
+                    "parameter": "transmission_rate",
+                    "start_date": "2023-01-15",
+                    "end_date": "2023-01-25",
+                    "value": 0.2,
+                },
             ],
         }
         _write_yaml(tmp_path, base_cfg, "base.yaml")
         overlay_path = _write_yaml(tmp_path, overlay_cfg, "overlay.yaml")
 
         from epydemix.cli.config import load_config
+
         config = load_config(overlay_path)
 
         # Overlay's overrides replaced base's
@@ -579,8 +661,11 @@ class TestConfigInheritance:
 
     def test_chain_inheritance(self, tmp_path):
         """Three-level chain: grandparent -> parent -> child."""
-        gp = {"model": {"type": "SIR"}, "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-30"},
-              "parameters": {"transmission_rate": 0.1, "recovery_rate": 0.05}}
+        gp = {
+            "model": {"type": "SIR"},
+            "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-30"},
+            "parameters": {"transmission_rate": 0.1, "recovery_rate": 0.05},
+        }
         parent = {"base": "gp.yaml", "parameters": {"transmission_rate": 0.3}}
         child = {"base": "parent.yaml", "parameters": {"recovery_rate": 0.2}}
 
@@ -589,10 +674,11 @@ class TestConfigInheritance:
         child_path = _write_yaml(tmp_path, child, "child.yaml")
 
         from epydemix.cli.config import load_config
+
         config = load_config(child_path)
 
         assert config["parameters"]["transmission_rate"] == 0.3  # from parent
-        assert config["parameters"]["recovery_rate"] == 0.2       # from child
+        assert config["parameters"]["recovery_rate"] == 0.2  # from child
 
     def test_circular_inheritance_raises(self, tmp_path):
         a = {"base": "b.yaml", "model": {"type": "SIR"}}
@@ -601,6 +687,7 @@ class TestConfigInheritance:
         _write_yaml(tmp_path, b, "b.yaml")
 
         from epydemix.cli.config import load_config
+
         with pytest.raises(ValueError, match="[Cc]ircular"):
             load_config(str(tmp_path / "a.yaml"))
 
@@ -608,8 +695,11 @@ class TestConfigInheritance:
         """End-to-end: run a simulation using an overlay config."""
         base_cfg = {
             "model": {"type": "SIR"},
-            "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-20",
-                           "n_simulations": 3},
+            "simulation": {
+                "start_date": "2023-01-01",
+                "end_date": "2023-01-20",
+                "n_simulations": 3,
+            },
             "parameters": {"transmission_rate": 0.3, "recovery_rate": 0.1},
         }
         overlay_cfg = {
@@ -629,6 +719,7 @@ class TestConfigInheritance:
 # Compare command tests
 # ---------------------------------------------------------------------------
 
+
 class TestCLICompare:
     def test_compare_two_bundles(self, tmp_path):
         b1 = _make_bundle(tmp_path, "run1.epx")
@@ -647,8 +738,7 @@ class TestCLICompare:
         b1 = _make_bundle(tmp_path, "a.epx")
         b2 = _make_bundle(tmp_path, "b.epx")
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "compare", b1, b2, "-n", "Baseline,Intervention"])
+        result = runner.invoke(cli, ["compare", b1, b2, "-n", "Baseline,Intervention"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "Baseline" in data
@@ -658,8 +748,7 @@ class TestCLICompare:
         b1 = _make_bundle(tmp_path, "base.epx")
         b2 = _make_bundle(tmp_path, "alt.epx")
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "compare", b1, b2, "-n", "Base,Alt", "-b", "Base"])
+        result = runner.invoke(cli, ["compare", b1, b2, "-n", "Base,Alt", "-b", "Base"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "_deltas_vs_Base" in data
@@ -668,8 +757,7 @@ class TestCLICompare:
     def test_compare_custom_metrics(self, tmp_path):
         b1 = _make_bundle(tmp_path, "r.epx")
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "compare", b1, "-m", "attack_rate,total_deaths"])
+        result = runner.invoke(cli, ["compare", b1, "-m", "attack_rate,total_deaths"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "attack_rate" in data["r"]
@@ -678,8 +766,7 @@ class TestCLICompare:
     def test_compare_days_over(self, tmp_path):
         b1 = _make_bundle(tmp_path, "r.epx")
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "compare", b1, "-m", "days_over:100"])
+        result = runner.invoke(cli, ["compare", b1, "-m", "days_over:100"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "days_over" in data["r"]
@@ -690,13 +777,36 @@ class TestCLICompare:
 # Calibration config & CLI
 # ---------------------------------------------------------------------------
 
+
 def _calibration_config(observed_data=None):
     """Return a minimal calibration config for SIR with inline observed data."""
     # Synthetic declining curve (looks like infected counts)
-    obs = observed_data if observed_data is not None else [
-        100, 95, 90, 86, 82, 78, 74, 70, 67, 64,
-        61, 58, 55, 53, 50, 48, 46, 44, 42, 40,
-    ]
+    obs = (
+        observed_data
+        if observed_data is not None
+        else [
+            100,
+            95,
+            90,
+            86,
+            82,
+            78,
+            74,
+            70,
+            67,
+            64,
+            61,
+            58,
+            55,
+            53,
+            50,
+            48,
+            46,
+            44,
+            42,
+            40,
+        ]
+    )
     return {
         "model": {"type": "SIR"},
         "simulation": {
@@ -735,6 +845,7 @@ class TestCalibrationConfig:
 
     def test_build_prior_uniform(self):
         from epydemix.cli.config import build_prior
+
         d = build_prior({"distribution": "uniform", "low": 0.1, "high": 0.6})
         # Should produce values in [0.1, 0.6]
         samples = d.rvs(1000)
@@ -743,27 +854,35 @@ class TestCalibrationConfig:
 
     def test_build_prior_normal(self):
         from epydemix.cli.config import build_prior
+
         d = build_prior({"distribution": "normal", "mean": 0.3, "std": 0.05})
         assert abs(d.mean() - 0.3) < 1e-6
 
     def test_build_prior_truncnorm(self):
         from epydemix.cli.config import build_prior
-        d = build_prior({
-            "distribution": "truncnorm",
-            "mean": 0.3, "std": 0.1,
-            "low": 0.1, "high": 0.5,
-        })
+
+        d = build_prior(
+            {
+                "distribution": "truncnorm",
+                "mean": 0.3,
+                "std": 0.1,
+                "low": 0.1,
+                "high": 0.5,
+            }
+        )
         samples = d.rvs(1000)
         assert samples.min() >= 0.1 - 1e-9
         assert samples.max() <= 0.5 + 1e-9
 
     def test_build_prior_unknown(self):
         from epydemix.cli.config import build_prior
+
         with pytest.raises(ValueError, match="Unknown distribution"):
             build_prior({"distribution": "magic"})
 
     def test_build_priors(self):
         from epydemix.cli.config import build_priors
+
         cal_cfg = {
             "priors": {
                 "beta": {"distribution": "uniform", "low": 0.1, "high": 0.8},
@@ -776,17 +895,20 @@ class TestCalibrationConfig:
 
     def test_build_priors_empty_raises(self):
         from epydemix.cli.config import build_priors
+
         with pytest.raises(ValueError, match="priors is required"):
             build_priors({"priors": {}})
 
     def test_load_observed_data_inline(self):
         from epydemix.cli.config import load_observed_data
+
         data = load_observed_data({"observed_data": [1.0, 2.0, 3.0]})
         assert len(data) == 3
         assert data[1] == 2.0
 
     def test_load_observed_data_csv(self, tmp_path):
         from epydemix.cli.config import load_observed_data
+
         csv_path = tmp_path / "obs.csv"
         csv_path.write_text("date,cases\n2023-01-01,100\n2023-01-02,95\n")
         data = load_observed_data(
@@ -798,6 +920,7 @@ class TestCalibrationConfig:
 
     def test_load_observed_data_csv_auto_column(self, tmp_path):
         from epydemix.cli.config import load_observed_data
+
         csv_path = tmp_path / "obs.csv"
         csv_path.write_text("date,value\n2023-01-01,50\n2023-01-02,60\n")
         data = load_observed_data(
@@ -809,12 +932,14 @@ class TestCalibrationConfig:
 
     def test_validate_calibration_config_valid(self):
         from epydemix.cli.config import validate_calibration_config
+
         cfg = _calibration_config()
         result = validate_calibration_config(cfg)
         assert result["valid"] is True
 
     def test_validate_calibration_config_missing_priors(self):
         from epydemix.cli.config import validate_calibration_config
+
         cfg = _calibration_config()
         del cfg["calibration"]["priors"]
         result = validate_calibration_config(cfg)
@@ -823,6 +948,7 @@ class TestCalibrationConfig:
 
     def test_validate_calibration_config_bad_strategy(self):
         from epydemix.cli.config import validate_calibration_config
+
         cfg = _calibration_config()
         cfg["calibration"]["strategy"] = "magic"
         result = validate_calibration_config(cfg)
@@ -830,6 +956,7 @@ class TestCalibrationConfig:
 
     def test_validate_calibration_config_bad_distance(self):
         from epydemix.cli.config import validate_calibration_config
+
         cfg = _calibration_config()
         cfg["calibration"]["distance"] = "unknown_metric"
         result = validate_calibration_config(cfg)
@@ -837,6 +964,7 @@ class TestCalibrationConfig:
 
     def test_resolve_distance_function(self):
         from epydemix.cli.config import _resolve_distance_function
+
         fn = _resolve_distance_function("rmse")
         assert callable(fn)
         with pytest.raises(ValueError, match="Unknown distance"):
@@ -852,10 +980,15 @@ class TestCalibrateCLI:
         config_path = _write_yaml(tmp_path, cfg, "cal.yaml")
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "calibrate", config_path,
-            "-o", str(tmp_path / "cal.epx"),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "calibrate",
+                config_path,
+                "-o",
+                str(tmp_path / "cal.epx"),
+            ],
+        )
         # Parse JSON from stdout (skip any leading non-JSON lines)
         raw = result.output
         if "{" in raw:
@@ -877,11 +1010,31 @@ class TestCalibrateCLI:
         """Run calibration with CSV observed data."""
         # Write observed data CSV
         csv_path = tmp_path / "observed.csv"
-        obs_values = [100, 95, 90, 86, 82, 78, 74, 70, 67, 64,
-                      61, 58, 55, 53, 50, 48, 46, 44, 42, 40]
+        obs_values = [
+            100,
+            95,
+            90,
+            86,
+            82,
+            78,
+            74,
+            70,
+            67,
+            64,
+            61,
+            58,
+            55,
+            53,
+            50,
+            48,
+            46,
+            44,
+            42,
+            40,
+        ]
         csv_path.write_text(
-            "date,cases\n" +
-            "\n".join(f"2023-01-{i+1:02d},{v}" for i, v in enumerate(obs_values))
+            "date,cases\n"
+            + "\n".join(f"2023-01-{i + 1:02d},{v}" for i, v in enumerate(obs_values))
             + "\n"
         )
 
@@ -891,10 +1044,15 @@ class TestCalibrateCLI:
         config_path = _write_yaml(tmp_path, cfg, "cal_csv.yaml")
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "calibrate", config_path,
-            "-o", str(tmp_path / "cal_csv.epx"),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "calibrate",
+                config_path,
+                "-o",
+                str(tmp_path / "cal_csv.epx"),
+            ],
+        )
         assert result.exit_code == 0
 
     def test_calibrate_invalid_config(self, tmp_path):
@@ -904,10 +1062,15 @@ class TestCalibrateCLI:
         config_path = _write_yaml(tmp_path, cfg, "bad_cal.yaml")
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "calibrate", config_path,
-            "-o", str(tmp_path / "bad.epx"),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "calibrate",
+                config_path,
+                "-o",
+                str(tmp_path / "bad.epx"),
+            ],
+        )
         assert result.exit_code == 1
 
     def test_calibrate_inspect_posterior(self, tmp_path):
@@ -918,19 +1081,30 @@ class TestCalibrateCLI:
 
         runner = CliRunner()
         # Run calibration
-        result = runner.invoke(cli, [
-            "calibrate", config_path, "-o", bundle_path,
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "calibrate",
+                config_path,
+                "-o",
+                bundle_path,
+            ],
+        )
         assert result.exit_code == 0
 
         # Inspect posterior
-        result = runner.invoke(cli, [
-            "inspect", bundle_path, "posterior",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "inspect",
+                bundle_path,
+                "posterior",
+            ],
+        )
         assert result.exit_code == 0
         raw = result.output
         if "{" in raw:
-            data = json.loads(raw[raw.index("{"):])
+            data = json.loads(raw[raw.index("{") :])
             assert "transmission_rate" in data
 
     def test_calibrate_with_inheritance(self, tmp_path):
@@ -966,8 +1140,28 @@ class TestCalibrateCLI:
                         "high": 0.8,
                     },
                 },
-                "observed_data": [100, 95, 90, 86, 82, 78, 74, 70, 67, 64,
-                                  61, 58, 55, 53, 50, 48, 46, 44, 42, 40],
+                "observed_data": [
+                    100,
+                    95,
+                    90,
+                    86,
+                    82,
+                    78,
+                    74,
+                    70,
+                    67,
+                    64,
+                    61,
+                    58,
+                    55,
+                    53,
+                    50,
+                    48,
+                    46,
+                    44,
+                    42,
+                    40,
+                ],
                 "target_variable": "Infected_total",
                 "distance": "rmse",
                 "top_fraction": 0.5,
@@ -977,10 +1171,15 @@ class TestCalibrateCLI:
         config_path = _write_yaml(tmp_path, cal_overlay, "cal_inherit.yaml")
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "calibrate", config_path,
-            "-o", str(tmp_path / "cal_inherit.epx"),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "calibrate",
+                config_path,
+                "-o",
+                str(tmp_path / "cal_inherit.epx"),
+            ],
+        )
         assert result.exit_code == 0
 
     def test_calibrate_against_transition(self, tmp_path):
@@ -990,10 +1189,15 @@ class TestCalibrateCLI:
         config_path = _write_yaml(tmp_path, cfg, "cal_trans.yaml")
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "calibrate", config_path,
-            "-o", str(tmp_path / "cal_trans.epx"),
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "calibrate",
+                config_path,
+                "-o",
+                str(tmp_path / "cal_trans.epx"),
+            ],
+        )
         if result.exit_code != 0:
             print("STDERR:", result.output)
         assert result.exit_code == 0
@@ -1004,15 +1208,22 @@ class TestCalibrateCLI:
 # Projection config & CLI
 # ---------------------------------------------------------------------------
 
+
 def _run_calibration(tmp_path, name="cal.epx"):
     """Run a quick calibration and return the bundle path."""
     cfg = _calibration_config()
     config_path = _write_yaml(tmp_path, cfg, "cal_for_proj.yaml")
     bundle_path = str(tmp_path / name)
     runner = CliRunner()
-    result = runner.invoke(cli, [
-        "calibrate", config_path, "-o", bundle_path,
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "calibrate",
+            config_path,
+            "-o",
+            bundle_path,
+        ],
+    )
     assert result.exit_code == 0, f"Calibration failed: {result.output}"
     return bundle_path
 
@@ -1022,6 +1233,7 @@ class TestProjectionConfig:
 
     def test_validate_projection_config_valid(self, tmp_path):
         from epydemix.cli.config import validate_projection_config
+
         bundle = _run_calibration(tmp_path)
         cfg = {
             "model": {"type": "SIR"},
@@ -1040,6 +1252,7 @@ class TestProjectionConfig:
 
     def test_validate_projection_config_missing_bundle(self):
         from epydemix.cli.config import validate_projection_config
+
         cfg = {
             "model": {"type": "SIR"},
             "simulation": {
@@ -1053,6 +1266,7 @@ class TestProjectionConfig:
 
     def test_validate_projection_config_missing_simulation(self, tmp_path):
         from epydemix.cli.config import validate_projection_config
+
         bundle = _run_calibration(tmp_path)
         cfg = {"model": {"type": "SIR"}}
         result = validate_projection_config(cfg, bundle)
@@ -1069,9 +1283,15 @@ class TestProjectCLI:
         proj_out = str(tmp_path / "proj.epx")
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "project", bundle, "-o", proj_out,
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "project",
+                bundle,
+                "-o",
+                proj_out,
+            ],
+        )
         assert result.exit_code == 0, f"Project failed: {result.output}"
 
         # Should produce a simulation bundle
@@ -1082,7 +1302,7 @@ class TestProjectCLI:
         # Manifest should be SimulationResults type
         raw = result.output
         if "{" in raw:
-            data = json.loads(raw[raw.index("{"):])
+            data = json.loads(raw[raw.index("{") :])
             assert data.get("type") == "SimulationResults"
 
     def test_project_with_overlay(self, tmp_path):
@@ -1090,7 +1310,7 @@ class TestProjectCLI:
         bundle = _run_calibration(tmp_path)
 
         # Write overlay config inheriting from the calibration bundle's config
-        import yaml
+
         overlay_cfg = {
             "base": os.path.join(bundle, "config.yaml"),
             "simulation": {
@@ -1104,9 +1324,17 @@ class TestProjectCLI:
         proj_out = str(tmp_path / "proj_overlay.epx")
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "project", bundle, "-c", overlay_path, "-o", proj_out,
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "project",
+                bundle,
+                "-c",
+                overlay_path,
+                "-o",
+                proj_out,
+            ],
+        )
         assert result.exit_code == 0, f"Project failed: {result.output}"
         assert os.path.isdir(proj_out)
 
@@ -1119,11 +1347,18 @@ class TestProjectCLI:
         runner.invoke(cli, ["project", bundle, "-o", proj_out])
 
         # Inspect quantiles on the projection bundle
-        result = runner.invoke(cli, [
-            "inspect", proj_out, "quantiles",
-            "-v", "Infected_total",
-            "-q", "0.05,0.5,0.95",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "inspect",
+                proj_out,
+                "quantiles",
+                "-v",
+                "Infected_total",
+                "-q",
+                "0.05,0.5,0.95",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "dates" in data
@@ -1147,6 +1382,7 @@ class TestProjectCLI:
 # Scheduled transition tests (CLI level)
 # ---------------------------------------------------------------------------
 
+
 def _sirv_config_inline_schedule(n_days=20):
     """Return a custom SIRV config with an inline flat dose schedule."""
     # Constant daily dose of 500 across the full simulation
@@ -1156,12 +1392,24 @@ def _sirv_config_inline_schedule(n_days=20):
             "type": "custom",
             "compartments": ["S", "V", "I", "R"],
             "transitions": [
-                {"source": "S", "target": "V", "kind": "scheduled",
-                 "schedule": schedule},
-                {"source": "S", "target": "I", "kind": "mediated",
-                 "params": ["transmission_rate", "I"]},
-                {"source": "I", "target": "R", "kind": "spontaneous",
-                 "params": "recovery_rate"},
+                {
+                    "source": "S",
+                    "target": "V",
+                    "kind": "scheduled",
+                    "schedule": schedule,
+                },
+                {
+                    "source": "S",
+                    "target": "I",
+                    "kind": "mediated",
+                    "params": ["transmission_rate", "I"],
+                },
+                {
+                    "source": "I",
+                    "target": "R",
+                    "kind": "spontaneous",
+                    "params": "recovery_rate",
+                },
             ],
         },
         "simulation": {
@@ -1197,9 +1445,18 @@ class TestScheduledTransitions:
         assert os.path.isdir(output_path)
 
         # Inspect: V compartment should have non-zero values
-        result = runner.invoke(cli, [
-            "inspect", output_path, "quantiles", "-v", "V_total", "-q", "0.5",
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "inspect",
+                output_path,
+                "quantiles",
+                "-v",
+                "V_total",
+                "-q",
+                "0.5",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert "V_total" in data
@@ -1215,7 +1472,8 @@ class TestScheduledTransitions:
         doses = [500.0] * n_days
         csv_path = tmp_path / "doses.csv"
         pd.DataFrame({"date": dates, "doses": doses}).to_csv(
-            csv_path, index=False,
+            csv_path,
+            index=False,
         )
         # CSV with date index → need to rewrite with date as index
         df = pd.DataFrame({"doses": doses}, index=dates)
@@ -1253,8 +1511,7 @@ class TestScheduledTransitions:
         runner = CliRunner()
         result = runner.invoke(cli, ["validate", config_path])
         assert result.exit_code != 0 or (
-            result.exit_code == 0
-            and not json.loads(result.output).get("valid", True)
+            result.exit_code == 0 and not json.loads(result.output).get("valid", True)
         )
 
     def test_validate_scheduled_ok(self, tmp_path):
@@ -1273,6 +1530,7 @@ class TestScheduledTransitions:
 # Provenance / lineage tests
 # ---------------------------------------------------------------------------
 
+
 class TestProvenance:
     """Verify that CLI commands embed provenance in the manifest."""
 
@@ -1280,7 +1538,7 @@ class TestProvenance:
         """Extract JSON manifest from mixed stdout/stderr CliRunner output."""
         raw = output
         if "{" in raw:
-            return json.loads(raw[raw.index("{"):])
+            return json.loads(raw[raw.index("{") :])
         return None
 
     def test_run_provenance(self, tmp_path):
@@ -1338,9 +1596,17 @@ class TestProvenance:
         proj_out = str(tmp_path / "prov_proj2.epx")
 
         runner = CliRunner()
-        result = runner.invoke(cli, [
-            "project", bundle, "-c", overlay_path, "-o", proj_out,
-        ])
+        result = runner.invoke(
+            cli,
+            [
+                "project",
+                bundle,
+                "-c",
+                overlay_path,
+                "-o",
+                proj_out,
+            ],
+        )
         assert result.exit_code == 0
 
         data = self._parse_manifest(result.output)

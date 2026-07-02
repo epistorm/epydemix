@@ -13,7 +13,6 @@ Usage::
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -24,6 +23,7 @@ def _print_json(data, precision=None):
     """Print a dict as JSON to stdout."""
     if precision is not None:
         from ..io.json_utils import _round_recursive
+
         data = _round_recursive(data, precision)
     click.echo(json.dumps(data, indent=2, cls=NumpySafeEncoder))
 
@@ -40,6 +40,7 @@ def _error_json(code, message, details=None):
 # ---------------------------------------------------------------------------
 # Root group
 # ---------------------------------------------------------------------------
+
 
 @click.group()
 @click.version_option(package_name="epydemix")
@@ -59,17 +60,19 @@ def cli():
 # run
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
 @click.argument("config_path", type=click.Path(exists=True))
-@click.option("--output", "-o", default="results.epx",
-              help="Path for the output .epx bundle.")
+@click.option(
+    "--output", "-o", default="results.epx", help="Path for the output .epx bundle."
+)
 def run(config_path, output):
     """Run a simulation from a YAML/JSON config file.
 
     Writes an .epx bundle and prints the manifest to stdout.
     """
-    from .config import load_config, run_from_config, validate_config
     from ..io.bundle import save_bundle
+    from .config import load_config, run_from_config, validate_config
 
     try:
         config = load_config(config_path)
@@ -78,8 +81,9 @@ def run(config_path, output):
 
     validation = validate_config(config)
     if not validation["valid"]:
-        _error_json("INVALID_CONFIG", "Config validation failed.",
-                    details=validation["errors"])
+        _error_json(
+            "INVALID_CONFIG", "Config validation failed.", details=validation["errors"]
+        )
 
     # Print warnings to stderr
     for w in validation.get("warnings", []):
@@ -103,10 +107,12 @@ def run(config_path, output):
 # calibrate
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
 @click.argument("config_path", type=click.Path(exists=True))
-@click.option("--output", "-o", default="calibration.epx",
-              help="Path for the output .epx bundle.")
+@click.option(
+    "--output", "-o", default="calibration.epx", help="Path for the output .epx bundle."
+)
 def calibrate(config_path, output):
     """Run ABC calibration from a YAML/JSON config file.
 
@@ -116,12 +122,12 @@ def calibrate(config_path, output):
 
     Writes an .epx calibration bundle and prints the manifest to stdout.
     """
+    from ..io.bundle import save_bundle
     from .config import (
+        calibrate_from_config,
         load_config,
         validate_calibration_config,
-        calibrate_from_config,
     )
-    from ..io.bundle import save_bundle
 
     try:
         config = load_config(config_path)
@@ -130,8 +136,11 @@ def calibrate(config_path, output):
 
     validation = validate_calibration_config(config)
     if not validation["valid"]:
-        _error_json("INVALID_CONFIG", "Calibration config validation failed.",
-                    details=validation["errors"])
+        _error_json(
+            "INVALID_CONFIG",
+            "Calibration config validation failed.",
+            details=validation["errors"],
+        )
 
     for w in validation.get("warnings", []):
         click.echo(f"Warning: {w}", err=True)
@@ -154,13 +163,20 @@ def calibrate(config_path, output):
 # project
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
 @click.argument("calibration_bundle", type=click.Path(exists=True))
-@click.option("--config", "-c", "config_path", default=None,
-              type=click.Path(exists=True),
-              help="Projection overlay config (inherits from calibration bundle's config).")
-@click.option("--output", "-o", default="projection.epx",
-              help="Path for the output .epx bundle.")
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    default=None,
+    type=click.Path(exists=True),
+    help="Projection overlay config (inherits from calibration bundle's config).",
+)
+@click.option(
+    "--output", "-o", default="projection.epx", help="Path for the output .epx bundle."
+)
 def project(calibration_bundle, config_path, output):
     """Run forward projections from a calibration posterior.
 
@@ -192,12 +208,12 @@ def project(calibration_bundle, config_path, output):
       epydemix project calibration.epx -o projection.epx
       epydemix project calibration.epx -c projection.yaml -o projection.epx
     """
+    from ..io.bundle import save_bundle
     from .config import (
         load_config,
-        validate_projection_config,
         project_from_config,
+        validate_projection_config,
     )
-    from ..io.bundle import save_bundle
 
     # Build the effective config
     try:
@@ -240,8 +256,11 @@ def project(calibration_bundle, config_path, output):
 
     validation = validate_projection_config(config, calibration_bundle)
     if not validation["valid"]:
-        _error_json("INVALID_CONFIG", "Projection config validation failed.",
-                    details=validation["errors"])
+        _error_json(
+            "INVALID_CONFIG",
+            "Projection config validation failed.",
+            details=validation["errors"],
+        )
 
     for w in validation.get("warnings", []):
         click.echo(f"Warning: {w}", err=True)
@@ -267,6 +286,7 @@ def project(calibration_bundle, config_path, output):
 # ---------------------------------------------------------------------------
 # validate
 # ---------------------------------------------------------------------------
+
 
 @cli.command()
 @click.argument("config_path", type=click.Path(exists=True))
@@ -299,28 +319,56 @@ def validate(config_path):
 # inspect
 # ---------------------------------------------------------------------------
 
+
 @cli.command(name="inspect")
 @click.argument("bundle_path", type=click.Path(exists=True))
 @click.argument("command")
-@click.option("--variables", "-v", default=None,
-              help="Comma-separated list of variables.")
-@click.option("--quantiles", "-q", default=None,
-              help="Comma-separated quantile levels (e.g. 0.05,0.5,0.95).")
-@click.option("--start", default=None,
-              help="Start date for time slice (ISO format).")
-@click.option("--end", default=None,
-              help="End date for time slice (ISO format).")
-@click.option("--resample", default=None,
-              help="Temporal resampling frequency (e.g. W, M).")
-@click.option("--round", "precision", type=int, default=6,
-              help="Decimal precision for numeric output (default: 6).")
-@click.option("--generation", type=int, default=None,
-              help="Calibration generation (for posterior/fit commands).")
-@click.option("--format", "output_format", default="json",
-              type=click.Choice(["json", "csv", "tsv"]),
-              help="Output format.")
-def inspect_cmd(bundle_path, command, variables, quantiles, start, end,
-                resample, precision, generation, output_format):
+@click.option(
+    "--variables", "-v", default=None, help="Comma-separated list of variables."
+)
+@click.option(
+    "--quantiles",
+    "-q",
+    default=None,
+    help="Comma-separated quantile levels (e.g. 0.05,0.5,0.95).",
+)
+@click.option("--start", default=None, help="Start date for time slice (ISO format).")
+@click.option("--end", default=None, help="End date for time slice (ISO format).")
+@click.option(
+    "--resample", default=None, help="Temporal resampling frequency (e.g. W, M)."
+)
+@click.option(
+    "--round",
+    "precision",
+    type=int,
+    default=6,
+    help="Decimal precision for numeric output (default: 6).",
+)
+@click.option(
+    "--generation",
+    type=int,
+    default=None,
+    help="Calibration generation (for posterior/fit commands).",
+)
+@click.option(
+    "--format",
+    "output_format",
+    default="json",
+    type=click.Choice(["json", "csv", "tsv"]),
+    help="Output format.",
+)
+def inspect_cmd(
+    bundle_path,
+    command,
+    variables,
+    quantiles,
+    start,
+    end,
+    resample,
+    precision,
+    generation,
+    output_format,
+):
     """Inspect an .epx result bundle.
 
     \b
@@ -398,21 +446,37 @@ def _print_tabular(data, fmt):
 # schema
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
 @click.argument("model_name")
-@click.option("--format", "fmt", default="json-schema",
-              type=click.Choice(["json-schema", "describe"]),
-              help="Output format.")
-@click.option("--waning-immunity", "waning_immunity", is_flag=True, default=False,
-              help="Include the waning-immunity module (adds waning_rate).")
-@click.option("--vaccination", is_flag=True, default=False,
-              help="Include the vaccination module "
-                   "(adds vaccination_rate, vaccine_efficacy).")
-@click.option("--outcome", default=None,
-              type=click.Choice(["deaths", "hospitalization"]),
-              help="Include an outcome module "
-                   "(deaths → mortality_rate; "
-                   "hospitalization → hospitalization_rate, hospitalization_recovery_rate).")
+@click.option(
+    "--format",
+    "fmt",
+    default="json-schema",
+    type=click.Choice(["json-schema", "describe"]),
+    help="Output format.",
+)
+@click.option(
+    "--waning-immunity",
+    "waning_immunity",
+    is_flag=True,
+    default=False,
+    help="Include the waning-immunity module (adds waning_rate).",
+)
+@click.option(
+    "--vaccination",
+    is_flag=True,
+    default=False,
+    help="Include the vaccination module (adds vaccination_rate, vaccine_efficacy).",
+)
+@click.option(
+    "--outcome",
+    default=None,
+    type=click.Choice(["deaths", "hospitalization"]),
+    help="Include an outcome module "
+    "(deaths → mortality_rate; "
+    "hospitalization → hospitalization_rate, hospitalization_recovery_rate).",
+)
 def schema(model_name, fmt, waning_immunity, vaccination, outcome):
     """Show the parameter schema for a predefined model.
 
@@ -427,8 +491,10 @@ def schema(model_name, fmt, waning_immunity, vaccination, outcome):
 
     model_name = model_name.upper()
     if model_name not in SUPPORTED_MODELS:
-        _error_json("UNKNOWN_MODEL",
-                     f"Unknown model '{model_name}'. Available: {SUPPORTED_MODELS}")
+        _error_json(
+            "UNKNOWN_MODEL",
+            f"Unknown model '{model_name}'. Available: {SUPPORTED_MODELS}",
+        )
 
     try:
         model = load_predefined_model(
@@ -452,16 +518,19 @@ def schema(model_name, fmt, waning_immunity, vaccination, outcome):
 # models
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
 def models():
     """List available predefined models."""
     from ..model.predefined_models import SUPPORTED_MODELS
+
     _print_json({"models": SUPPORTED_MODELS})
 
 
 # ---------------------------------------------------------------------------
 # defaults
 # ---------------------------------------------------------------------------
+
 
 @cli.command()
 @click.argument("disease", required=False)
@@ -490,20 +559,41 @@ def defaults(disease):
 # compare
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
-@click.argument("bundles", nargs=-1, required=True,
-                type=click.Path(exists=True))
-@click.option("--metrics", "-m", default=None,
-              help="Comma-separated metrics (e.g. attack_rate,peak,total_deaths,days_over:500).")
-@click.option("--variables", "-v", default=None,
-              help="Comma-separated variable names for variable-specific metrics.")
-@click.option("--names", "-n", default=None,
-              help="Comma-separated scenario names (same order as bundles). "
-                   "Defaults to bundle directory names.")
-@click.option("--round", "precision", type=int, default=6,
-              help="Decimal precision for numeric output (default: 6).")
-@click.option("--baseline", "-b", default=None,
-              help="Scenario name to use as baseline for delta computation.")
+@click.argument("bundles", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option(
+    "--metrics",
+    "-m",
+    default=None,
+    help="Comma-separated metrics (e.g. attack_rate,peak,total_deaths,days_over:500).",
+)
+@click.option(
+    "--variables",
+    "-v",
+    default=None,
+    help="Comma-separated variable names for variable-specific metrics.",
+)
+@click.option(
+    "--names",
+    "-n",
+    default=None,
+    help="Comma-separated scenario names (same order as bundles). "
+    "Defaults to bundle directory names.",
+)
+@click.option(
+    "--round",
+    "precision",
+    type=int,
+    default=6,
+    help="Decimal precision for numeric output (default: 6).",
+)
+@click.option(
+    "--baseline",
+    "-b",
+    default=None,
+    help="Scenario name to use as baseline for delta computation.",
+)
 def compare(bundles, metrics, variables, names, precision, baseline):
     """Compare multiple .epx bundles on standard metrics.
 
@@ -528,8 +618,10 @@ def compare(bundles, metrics, variables, names, precision, baseline):
     if names:
         name_list = names.split(",")
         if len(name_list) != len(bundles):
-            _error_json("COMPARE_ERROR",
-                        f"Got {len(name_list)} names but {len(bundles)} bundles.")
+            _error_json(
+                "COMPARE_ERROR",
+                f"Got {len(name_list)} names but {len(bundles)} bundles.",
+            )
     else:
         # Default: use directory stem
         name_list = [Path(b).stem for b in bundles]
@@ -552,9 +644,10 @@ def compare(bundles, metrics, variables, names, precision, baseline):
     # Compute deltas if baseline specified
     if baseline:
         if baseline not in result:
-            _error_json("COMPARE_ERROR",
-                        f"Baseline '{baseline}' not found. "
-                        f"Available: {list(result.keys())}")
+            _error_json(
+                "COMPARE_ERROR",
+                f"Baseline '{baseline}' not found. Available: {list(result.keys())}",
+            )
         base_data = result[baseline]
         deltas = {}
         for scenario, metrics_data in result.items():
@@ -568,16 +661,22 @@ def compare(bundles, metrics, variables, names, precision, baseline):
                 if "median" in metric_val and "median" in base_val:
                     bm = base_val["median"]
                     sm = metric_val["median"]
-                    if (bm is not None and sm is not None
-                            and isinstance(bm, (int, float))
-                            and isinstance(sm, (int, float))):
+                    if (
+                        bm is not None
+                        and sm is not None
+                        and isinstance(bm, (int, float))
+                        and isinstance(sm, (int, float))
+                    ):
                         scenario_delta[metric_name] = sm - bm
                 elif "value" in metric_val and "value" in base_val:
                     bv = base_val["value"]
                     sv = metric_val["value"]
-                    if (bv is not None and sv is not None
-                            and isinstance(bv, (int, float))
-                            and isinstance(sv, (int, float))):
+                    if (
+                        bv is not None
+                        and sv is not None
+                        and isinstance(bv, (int, float))
+                        and isinstance(sv, (int, float))
+                    ):
                         scenario_delta[metric_name] = sv - bv
             deltas[scenario] = scenario_delta
         result["_deltas_vs_" + baseline] = deltas
@@ -589,11 +688,13 @@ def compare(bundles, metrics, variables, names, precision, baseline):
 # populations
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
 def populations():
     """List available population datasets."""
     try:
         from ..population.population import get_available_locations
+
         locations = get_available_locations()["location"].tolist()
         _print_json({"populations": locations})
     except Exception as e:
@@ -603,6 +704,7 @@ def populations():
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main():
     """Entry point for the CLI."""

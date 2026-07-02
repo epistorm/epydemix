@@ -2,24 +2,22 @@
 
 import json
 import os
-import tempfile
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from epydemix import EpiModel, load_predefined_model
+from epydemix import load_predefined_model
 from epydemix.io.bundle import load_bundle, load_bundle_dataframe, save_bundle
 from epydemix.io.inspect import inspect_bundle
 from epydemix.io.json_utils import NumpySafeEncoder, to_json
-from epydemix.model.simulation_output import Trajectory
 from epydemix.model.simulation_results import SimulationResults
 from epydemix.population import Population
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def simple_population():
@@ -61,6 +59,7 @@ def bundle_path(sir_results, tmp_path):
 # JSON utilities
 # ---------------------------------------------------------------------------
 
+
 class TestJsonUtils:
     def test_numpy_encoder(self):
         data = {
@@ -88,10 +87,11 @@ class TestJsonUtils:
 # Bundle save/load
 # ---------------------------------------------------------------------------
 
+
 class TestBundleSaveLoad:
     def test_save_creates_files(self, sir_results, tmp_path):
         path = str(tmp_path / "results.epx")
-        manifest = save_bundle(sir_results, path)
+        save_bundle(sir_results, path)
 
         assert os.path.isdir(path)
         assert os.path.exists(os.path.join(path, "manifest.json"))
@@ -142,7 +142,8 @@ class TestBundleSaveLoad:
     def test_load_dataframe_with_columns(self, bundle_path):
         # Load only specific columns
         df = load_bundle_dataframe(
-            bundle_path, "compartments",
+            bundle_path,
+            "compartments",
             columns=["sim_id", "date", "Infected_total"],
         )
         assert list(df.columns) == ["sim_id", "date", "Infected_total"]
@@ -198,6 +199,7 @@ class TestBundleSaveLoad:
 # Inspection engine
 # ---------------------------------------------------------------------------
 
+
 class TestInspectManifest:
     def test_manifest_command(self, bundle_path):
         result = inspect_bundle(bundle_path, "manifest")
@@ -212,7 +214,8 @@ class TestInspectManifest:
 class TestInspectQuantiles:
     def test_basic_quantiles(self, bundle_path):
         result = inspect_bundle(
-            bundle_path, "quantiles",
+            bundle_path,
+            "quantiles",
             variables=["Infected_total"],
             quantiles=[0.05, 0.5, 0.95],
         )
@@ -231,11 +234,13 @@ class TestInspectQuantiles:
 
     def test_quantiles_time_slice(self, bundle_path):
         full = inspect_bundle(
-            bundle_path, "quantiles",
+            bundle_path,
+            "quantiles",
             variables=["Infected_total"],
         )
         sliced = inspect_bundle(
-            bundle_path, "quantiles",
+            bundle_path,
+            "quantiles",
             variables=["Infected_total"],
             start="2023-01-05",
             end="2023-01-15",
@@ -247,7 +252,8 @@ class TestInspectQuantiles:
     def test_quantiles_full_precision(self, bundle_path):
         """Inspection API returns full-precision floats; rounding is CLI-only."""
         result = inspect_bundle(
-            bundle_path, "quantiles",
+            bundle_path,
+            "quantiles",
             variables=["Infected_total"],
             quantiles=[0.5],
         )
@@ -259,7 +265,8 @@ class TestInspectQuantiles:
 class TestInspectSummary:
     def test_basic_summary(self, bundle_path):
         result = inspect_bundle(
-            bundle_path, "summary",
+            bundle_path,
+            "summary",
             variables=["Infected_total"],
         )
         assert "Infected_total" in result
@@ -271,7 +278,8 @@ class TestInspectSummary:
 
     def test_summary_time_slice(self, bundle_path):
         result = inspect_bundle(
-            bundle_path, "summary",
+            bundle_path,
+            "summary",
             variables=["Infected_total"],
             start="2023-01-05",
             end="2023-01-10",
@@ -282,7 +290,8 @@ class TestInspectSummary:
 class TestInspectPeak:
     def test_basic_peak(self, bundle_path):
         result = inspect_bundle(
-            bundle_path, "peak",
+            bundle_path,
+            "peak",
             variables=["Infected_total"],
         )
         assert "Infected_total" in result
@@ -294,7 +303,8 @@ class TestInspectPeak:
 
     def test_peak_time_slice(self, bundle_path):
         result = inspect_bundle(
-            bundle_path, "peak",
+            bundle_path,
+            "peak",
             variables=["Infected_total"],
             start="2023-01-01",
             end="2023-01-10",
@@ -306,6 +316,7 @@ class TestInspectPeak:
 # JSON serialization of inspect results
 # ---------------------------------------------------------------------------
 
+
 class TestInspectJsonSafety:
     """Verify all inspect commands return JSON-serializable results."""
 
@@ -315,21 +326,24 @@ class TestInspectJsonSafety:
 
     def test_quantiles_is_json_safe(self, bundle_path):
         result = inspect_bundle(
-            bundle_path, "quantiles",
+            bundle_path,
+            "quantiles",
             variables=["Infected_total"],
         )
         json.dumps(result)
 
     def test_summary_is_json_safe(self, bundle_path):
         result = inspect_bundle(
-            bundle_path, "summary",
+            bundle_path,
+            "summary",
             variables=["Infected_total"],
         )
         json.dumps(result)
 
     def test_peak_is_json_safe(self, bundle_path):
         result = inspect_bundle(
-            bundle_path, "peak",
+            bundle_path,
+            "peak",
             variables=["Infected_total"],
         )
         json.dumps(result)

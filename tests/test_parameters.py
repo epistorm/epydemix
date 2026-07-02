@@ -18,7 +18,6 @@ from epydemix.parameters.predefined_specs import (
     sis_specs,
 )
 
-
 # ---------------------------------------------------------------------------
 # ParameterSpec tests
 # ---------------------------------------------------------------------------
@@ -124,28 +123,32 @@ class TestParameterRegistry:
     @pytest.fixture
     def registry(self):
         reg = ParameterRegistry()
-        reg.register(ParameterSpec(
-            name="beta",
-            description="Transmission rate",
-            kind="rate",
-            default=0.3,
-            min=0,
-            max=10,
-            units="1/days",
-            required=True,
-            tags=["transmission"],
-        ))
-        reg.register(ParameterSpec(
-            name="gamma",
-            description="Recovery rate",
-            kind="rate",
-            default=0.1,
-            min=0,
-            max=5,
-            units="1/days",
-            required=True,
-            tags=["recovery"],
-        ))
+        reg.register(
+            ParameterSpec(
+                name="beta",
+                description="Transmission rate",
+                kind="rate",
+                default=0.3,
+                min=0,
+                max=10,
+                units="1/days",
+                required=True,
+                tags=["transmission"],
+            )
+        )
+        reg.register(
+            ParameterSpec(
+                name="gamma",
+                description="Recovery rate",
+                kind="rate",
+                default=0.1,
+                min=0,
+                max=5,
+                units="1/days",
+                required=True,
+                tags=["recovery"],
+            )
+        )
         return reg
 
     def test_register_and_get(self, registry):
@@ -197,13 +200,15 @@ class TestParameterRegistry:
 
     def test_validate_missing_required_no_default(self):
         reg = ParameterRegistry()
-        reg.register(ParameterSpec(
-            name="beta",
-            description="Transmission rate",
-            kind="rate",
-            required=True,
-            # no default
-        ))
+        reg.register(
+            ParameterSpec(
+                name="beta",
+                description="Transmission rate",
+                kind="rate",
+                required=True,
+                # no default
+            )
+        )
         result = reg.validate({})
         assert not result.valid
         assert len(result.errors) == 1
@@ -255,12 +260,14 @@ class TestParameterRegistry:
         assert defaults == {"beta": 0.3, "gamma": 0.1}
 
     def test_replace_on_re_register(self, registry):
-        registry.register(ParameterSpec(
-            name="beta",
-            description="Updated",
-            kind="rate",
-            default=0.5,
-        ))
+        registry.register(
+            ParameterSpec(
+                name="beta",
+                description="Updated",
+                kind="rate",
+                default=0.5,
+            )
+        )
         assert registry.get("beta").default == 0.5
         assert registry.get("beta").description == "Updated"
 
@@ -418,10 +425,12 @@ class TestPredefinedModelIntegration:
         from epydemix import EpiModel
 
         model = EpiModel()
-        model.register_parameter_spec(ParameterSpec(
-            name="custom_rate",
-            description="A custom rate",
-            kind="rate",
-            default=0.5,
-        ))
+        model.register_parameter_spec(
+            ParameterSpec(
+                name="custom_rate",
+                description="A custom rate",
+                kind="rate",
+                default=0.5,
+            )
+        )
         assert model.parameter_registry.has("custom_rate")

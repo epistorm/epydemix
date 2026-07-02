@@ -2,7 +2,6 @@
 
 import copy
 import json
-import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -45,6 +44,7 @@ def _load_raw(path: str) -> Dict[str, Any]:
             content = f.read()
             try:
                 import yaml
+
                 return yaml.safe_load(content) or {}
             except (ImportError, Exception):
                 return json.loads(content)
@@ -61,11 +61,7 @@ def _deep_merge(base: Dict, overlay: Dict) -> Dict:
     """
     result = copy.deepcopy(base)
     for key, value in overlay.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = _deep_merge(result[key], value)
         else:
             result[key] = copy.deepcopy(value)
@@ -167,7 +163,9 @@ def _check_ic_normalization(ic_cfg: Dict[str, Any], tol: float = 1e-4) -> List[s
             continue  # non-numeric values are already caught by the type check
 
         if abs(total - 1.0) > tol:
-            label = "default demographic groups" if path == "default" else f"group '{path}'"
+            label = (
+                "default demographic groups" if path == "default" else f"group '{path}'"
+            )
             errors.append(
                 f"initial_conditions: fractions for {label} sum to {total:.6g}, expected 1.0"
             )
@@ -248,7 +246,11 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
                         f"transitions[{i}]: kind 'scheduled' requires a 'schedule' field "
                         "(path to a CSV file or an inline list)"
                     )
-                if kind in _BUILTIN_KINDS and kind != "scheduled" and "params" not in tr:
+                if (
+                    kind in _BUILTIN_KINDS
+                    and kind != "scheduled"
+                    and "params" not in tr
+                ):
                     errors.append(
                         f"transitions[{i}]: kind '{kind}' requires a 'params' field"
                     )
@@ -318,6 +320,7 @@ def _load_schedule(
     all groups.  Returns an array of shape ``(T, n_groups)``.
     """
     import pandas as pd
+
     from ..utils.utils import compute_simulation_dates
 
     dates = compute_simulation_dates(start_date, end_date)
@@ -475,9 +478,7 @@ def build_model_from_config(
     return model
 
 
-def _resolve_compartment(
-    name: str, compartments: list
-) -> Optional[str]:
+def _resolve_compartment(name: str, compartments: list) -> Optional[str]:
     """Return the canonical compartment name matching *name* (case-insensitive).
 
     Returns ``None`` if no match is found.
@@ -679,7 +680,9 @@ def build_prior(spec: Dict[str, Any]) -> Any:
         return stats.norm(loc=float(spec["mean"]), scale=float(spec["std"]))
 
     elif dist_name == "lognormal":
-        return stats.lognorm(s=float(spec["shape"]), scale=float(spec.get("scale", 1.0)))
+        return stats.lognorm(
+            s=float(spec["shape"]), scale=float(spec.get("scale", 1.0))
+        )
 
     elif dist_name == "truncnorm":
         mean = float(spec["mean"])
@@ -760,8 +763,7 @@ def load_observed_data(
     if col is not None:
         if col not in df.columns:
             raise ValueError(
-                f"Column '{col}' not found in {obs_path}. "
-                f"Available: {list(df.columns)}"
+                f"Column '{col}' not found in {obs_path}. Available: {list(df.columns)}"
             )
         return df[col].values.astype(float)
 
@@ -848,8 +850,7 @@ def _resolve_distance_function(name: str) -> Callable:
     }
     if name not in available:
         raise ValueError(
-            f"Unknown distance function '{name}'. "
-            f"Available: {list(available.keys())}"
+            f"Unknown distance function '{name}'. Available: {list(available.keys())}"
         )
     return available[name]
 
@@ -937,8 +938,7 @@ def calibrate_from_config(
 
     # Fixed parameters = parameters section minus any that appear in priors
     fixed_params = {
-        k: v for k, v in config.get("parameters", {}).items()
-        if k not in priors
+        k: v for k, v in config.get("parameters", {}).items() if k not in priors
     }
 
     sampler = ABCSampler(
@@ -1015,9 +1015,7 @@ def validate_projection_config(
     elif not (bundle_path / "manifest.json").exists():
         errors.append(f"No manifest.json in bundle: {calibration_bundle}")
     elif not (bundle_path / "posterior.parquet").exists():
-        errors.append(
-            f"No posterior.parquet in bundle — is this a calibration bundle?"
-        )
+        errors.append("No posterior.parquet in bundle — is this a calibration bundle?")
 
     # Must have simulation section (inherited or explicit)
     if "simulation" not in config:
@@ -1068,7 +1066,6 @@ def project_from_config(
     """
     import pandas as pd
 
-    from ..io.bundle import load_bundle_dataframe
     from ..model.epimodel import simulate
 
     bundle_path = Path(calibration_bundle)
