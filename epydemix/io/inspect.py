@@ -90,11 +90,8 @@ def _resample_grouped(
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"])
     resampled = (
-        df.groupby("sim_id")
-        .apply(
-            lambda g: g.set_index("date")[value_cols].resample(freq).agg(agg),
-            include_groups=False,
-        )
+        df.groupby("sim_id")[["date"] + value_cols]
+        .apply(lambda g: g.set_index("date")[value_cols].resample(freq).agg(agg))
         .reset_index()
     )
     return resampled
@@ -453,9 +450,8 @@ def _metric_peak_date(comp, manifest, variable=None, **kw):
     if var not in comp.columns:
         return {"value": None, "note": f"{var} not found"}
     comp_sorted = comp.sort_values("date")
-    peak_dates = comp_sorted.groupby("sim_id").apply(
-        lambda g: g.loc[g[var].idxmax(), "date"], include_groups=False
-    )
+    idx = comp_sorted.groupby("sim_id")[var].idxmax()
+    peak_dates = comp_sorted.loc[idx, "date"]
     peak_dates = pd.to_datetime(peak_dates).sort_values()
     n = len(peak_dates)
     return {
