@@ -9,113 +9,75 @@
 
 ![Alt text](https://raw.githubusercontent.com/epistorm/epydemix/main/tutorials/img/epydemix-logo.png)
 
-
 **[Documentation](https://epydemix.readthedocs.io/en/latest/)** | **[Website](https://www.epydemix.org/)** | **[Tutorials](https://github.com/epistorm/epydemix/tree/main/tutorials)**
 
-**Epydemix** is a Python package for epidemic modeling. It provides tools to create, calibrate, and analyze epidemic models, allowing users to simulate the spread of infectious diseases using different compartmental models, contact layers, and calibration techniques. It is designed to be used in conjunction with the [epydemix-data](https://github.com/epistorm/epydemix-data/) package to load population and contact matrix data.
+**Epydemix** is a Python package for epidemic modeling. This branch adds an **agent framework** on top of it: a CLI, parameter registry, and structured output format that let an LLM agent (or any automation pipeline) discover, configure, run, calibrate, and inspect epidemic models without reading source code or holding Python objects in memory. The core epydemix library and its documentation continue to live on the [`main` branch](https://github.com/epistorm/epydemix/tree/main); this README covers the agent framework specifically.
 
+---
 
-## Installation
-You can install **epydemix** from either **PyPI** or **conda-forge**. We recommend using a virtual environment (via `conda`, `mamba`, or `venv`) to avoid dependency conflicts.
+## Epydemix Agent Framework
 
-### Install from PyPI
+Ask an LLM agent to "run an SEIR model of COVID-19 in Italy and compare three intervention timings," and a typical modeling library forces it to read source code to find available models, guess at function signatures, and dig results out of in-memory DataFrames. The agent framework closes that gap with five properties: **discoverability** (query models/parameters via the CLI instead of reading code), **declarative input** (a single validated YAML config per run, not a chain of API calls), **statelessness** (every command is a self-contained function of files on disk — nothing needs to survive between tool calls), **structured output** (results land as self-describing Parquet + JSON bundles), and **inspectability** (targeted questions like "when did infections peak?" return compact JSON, not millions of rows). See [AGENT_FRIENDLY_DESIGN.md](AGENT_FRIENDLY_DESIGN.md) for the full design rationale.
+
+### Install
+
+This layer isn't published to PyPI yet — install from source:
+
+```bash
+git clone https://github.com/epistorm/epydemix.git
+cd epydemix
+git checkout agent-framework
+pip install -e ".[agent]"
+```
+
+This installs the `epydemix` console script and its CLI dependencies (`click`, `pyyaml`, `pyarrow`).
+
+### Quick start
+
+```bash
+# Discover available models and their parameters
+epydemix models
+epydemix schema SEIR
+
+# Browse literature-sourced disease presets
+epydemix defaults covid19
+
+# Validate a config, then run it
+epydemix validate config.yaml
+epydemix run config.yaml --output results.epx
+
+# Ask questions about the results
+epydemix inspect results.epx summary -v I_total
+epydemix inspect results.epx quantiles -v I_total -q 0.05,0.5,0.95
+epydemix inspect results.epx peak -v I_total
+
+# Calibrate against observed data, then project forward
+epydemix calibrate cal_config.yaml -o calibration.epx
+epydemix project calibration.epx -c projection.yaml -o projection.epx
+```
+
+Every command prints structured JSON to stdout and diagnostics to stderr, so results are easy to parse programmatically.
+
+### Learn more
+
+- **[AGENT.md](AGENT.md)** — the full reference: every CLI command, the complete YAML config format, and the output bundle structure. This is the contract an LLM agent reads before driving epydemix.
+- **[AGENT_EXAMPLES.md](AGENT_EXAMPLES.md)** — visualization recipes and end-to-end workflow examples.
+- **[AGENT_FRIENDLY_DESIGN.md](AGENT_FRIENDLY_DESIGN.md)** — the design essay behind this layer: why CLI over MCP, why bundles instead of in-memory objects, and the other key decisions.
+
+---
+
+## Epydemix Core Library
+
+Epydemix is also usable directly as a Python library — in notebooks, scripts, or any Python codebase — via its `EpiModel` API. It provides tools to create, calibrate, and analyze epidemic models using different compartmental models, contact layers, and calibration techniques, and pairs with the [epydemix-data](https://github.com/epistorm/epydemix-data/) package for population and contact matrix data. For the complete documentation, tutorials, and installation guide for the core library, see the [`main` branch](https://github.com/epistorm/epydemix/tree/main) or [Read the Docs](https://epydemix.readthedocs.io/en/latest/).
 
 ```bash
 pip install epydemix
 ```
-### Install from Conda (conda-forge)
 
-```bash
-conda install -c conda-forge epydemix
-```
-
-To create a fresh environment and install Epydemix:
-```bash
-conda create -n epydemix-env -c conda-forge epydemix
-conda activate epydemix-env
-```
+12 tutorial notebooks cover everything from a first SIR model to age-structured populations, interventions, ABC calibration, multi-strain models, and the predefined model backbones — see the [tutorials folder](./tutorials) (runnable directly in Google Colab) and the [full documentation](https://epydemix.readthedocs.io/en/latest/) on Read the Docs.
 
 ---
-
-## Quick Start
-
-Once installed, you can start using **epydemix** in your Python scripts or Jupyter notebooks. Below an example to get started.
-
-### Example: Creating and running a simple SIR model
-
-```python
-from epydemix import EpiModel
-from epydemix.visualization import plot_quantiles
-
-# Define a basic SIR model
-model = EpiModel(
-    name="SIR Model",
-    compartments=["S", "I", "R"],  # Susceptible, Infected, Recovered
-)
-
-# Add transitions: infection and recovery
-model.add_transition(source="S", target="I", params=(0.3, "I"), kind="mediated")
-model.add_transition(source="I", target="R", params=0.1, kind="spontaneous")
-
-# Run simulations
-results = model.run_simulations(
-    start_date="2024-01-01",
-    end_date="2024-04-10",
-    Nsim=100,
-)
-
-# Extract and plot quantiles of compartment counts
-df_quantiles = results.get_quantiles_compartments()
-plot_quantiles(df_quantiles, columns=["I_total", "S_total", "R_total"])
-```
-
-### Tutorials
-We provide a series of tutorials to help you get started with **epydemix**.
-
-- [Tutorial 1](https://github.com/epistorm/epydemix/blob/main/tutorials/01_Model_Definition_and_Simulation.ipynb): An Introduction to Model Definition and Simulation
-- [Tutorial 2](https://github.com/epistorm/epydemix/blob/main/tutorials/02_Modeling_with_Population_Data.ipynb): Using Population Data from Epydemix Data
-- [Tutorial 3](https://github.com/epistorm/epydemix/blob/main/tutorials/03_Modeling_Interventions.ipynb): Modeling Non-pharmaceutical Interventions
-- [Tutorial 4](https://github.com/epistorm/epydemix/blob/main/tutorials/04_Model_Calibration_part1.ipynb): Model Calibration with ABC (Part 1)
-- [Tutorial 5](https://github.com/epistorm/epydemix/blob/main/tutorials/05_Model_Calibration_part2.ipynb): Model Calibration with ABC (Part 2)
-- [Tutorial 6](https://github.com/epistorm/epydemix/blob/main/tutorials/06_Advanced_Modeling_Features.ipynb): Advanced Modeling Features
-- [Tutorial 7](https://github.com/epistorm/epydemix/blob/main/tutorials/07_Covid-19_Example.ipynb): COVID-19 Case Study
-- [Tutorial 8](https://github.com/epistorm/epydemix/blob/main/tutorials/08_Multiple_Strains.ipynb): Modeling Multiple Strains
-- [Tutorial 9](https://github.com/epistorm/epydemix/blob/main/tutorials/09_Vaccinations.ipynb): Modeling Vaccinations
-- [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations and Calibration with Multiprocessing
-- [Tutorial 11](https://github.com/epistorm/epydemix/blob/main/tutorials/11_Epistorm_Mix_Matrices.ipynb): Using Epistorm-Mix Contact Matrices (sex and race/ethnicity)
-- [Tutorial 12](https://github.com/epistorm/epydemix/blob/main/tutorials/12_Predefined_Models.ipynb): Predefined Epidemic Models — Backbones and Modular Extensions
-
-You can run all tutorials directly in Google Colab — just open any notebook in the [tutorials](./tutorials) folder and click the **“Open in Colab”** button at the top.
-
-
-
----
-## Epydemix Data
-
-**epydemix** also provides access to a wealth of real-world population and contact matrix data through the [**epydemix_data**](https://github.com/epistorm/epydemix-data/) module. This dataset allows you to load predefined population structures, including age distribution and contact matrices for over 400 locations globally. You can use this data to create realistic simulations of disease spread in different geographies.
-
-### Example of Loading Population Data
-
-```python
-from epydemix.population import load_epydemix_population
-
-# Load population data for the United States using the Mistry 2021 contact matrix
-population = load_epydemix_population(
-    population_name="United_States",
-    contacts_source="mistry_2021",
-    layers=["home", "work", "school", "community"],
-)
-
-# Assign the loaded population to the epidemic model
-model.set_population(population)
-```
-
-Epydemix can load data either locally from a folder or directly from online sources, making it easy to simulate a wide range of epidemic models on real population data.
-
-For more information about the available population and contact matrices and to download the data, please visit the [dedicated repository](https://github.com/epistorm/epydemix-data/).
-
----
-## Citation 
+## Citation
 The paper describing the development of Epydemix is available [here](https://doi.org/10.1371/journal.pcbi.1013735).
 To reference our work, please use the following citation:
 ```

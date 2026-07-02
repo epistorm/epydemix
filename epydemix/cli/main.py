@@ -47,6 +47,10 @@ def cli():
     """Epydemix: epidemic modeling, simulation, and calibration.
 
     Agent-friendly CLI for driving epydemix from configs and inspecting results.
+    Every command prints structured JSON to stdout and diagnostics/warnings to
+    stderr, so stdout is always safe to parse or pipe.
+
+    Run `epydemix COMMAND --help` for a given command's options and examples.
     """
     pass
 
