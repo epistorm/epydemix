@@ -45,6 +45,9 @@ agent = [
     "click>=8.0",
     "pyyaml>=6.0",
 ]
+numba = [
+    "numba>=0.57.0",
+]
 
 [project.urls]
 # Optional links related to your project

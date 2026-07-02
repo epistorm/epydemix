@@ -74,6 +74,8 @@ Epydemix is also usable directly as a Python library — in notebooks, scripts, 
 pip install epydemix
 ```
 
+Add `pip install epydemix[numba]` for a JIT-compiled speedup on the stochastic simulation hot path (optional — epydemix runs fine without it, just slower).
+
 12 tutorial notebooks cover everything from a first SIR model to age-structured populations, interventions, ABC calibration, multi-strain models, and the predefined model backbones — see the [tutorials folder](./tutorials) (runnable directly in Google Colab) and the [full documentation](https://epydemix.readthedocs.io/en/latest/) on Read the Docs.
 
 ---
