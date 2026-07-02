@@ -183,3 +183,5 @@ epydemix-data-vtest
 # local AI agent configuration
 .claude
 
+# framework outputs
+studies/
