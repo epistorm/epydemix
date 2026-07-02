@@ -23,6 +23,9 @@ You can install **epydemix** from either **PyPI** or **conda-forge**. We recomme
 ```bash
 pip install epydemix
 ```
+
+Add `pip install epydemix[numba]` for a JIT-compiled speedup on the stochastic simulation hot path (optional — epydemix runs fine without it, just slower).
+
 ### Install from Conda (conda-forge)
 
 ```bash
