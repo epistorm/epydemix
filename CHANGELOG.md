@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.3.1] - 2026-07-02
+
+### Fixed
+
+* `pyproject.toml` now lists `numba` as an optional extra (`pip install epydemix[numba]`), restoring the JIT-compiled speedup for `_multinomial_probs` (the hot path in stochastic simulation) advertised in the [1.2.0] changelog entry. `requirements.txt` and `setup.py` have listed `numba>=0.57.0` since 1.2.0, but `pyproject.toml`'s `dependencies` was never updated to match — since PyPI installs are driven by `pyproject.toml`, `pip install epydemix` never actually installed `numba`, silently falling back to the un-JIT'd Python path (no crash: `utils.py` already wraps the import in a `try/except` with a no-op decorator fallback). `numba`'s own hard dependency, `llvmlite`, bundles LLVM and is 40-60MB per wheel, so it's exposed as an opt-in extra rather than a base dependency.
+
+---
+
 ## [1.3.0] - 2026-07-01
 
 ### Changed
