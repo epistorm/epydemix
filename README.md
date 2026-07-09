@@ -118,11 +118,6 @@ Epydemix can load data either locally from a folder or directly from online sour
 For more information about the available population and contact matrices and to download the data, please visit the [dedicated repository](https://github.com/epistorm/epydemix-data/).
 
 ---
-## Agent Framework
-
-Epydemix also ships a CLI for driving simulations programmatically — designed for use by LLM agents and automation pipelines, but equally usable from the shell. It covers discovery, config validation, running, and inspecting results end-to-end. See [AGENT.md](https://github.com/epistorm/epydemix/blob/agent-framework/AGENT.md) on the `agent-framework` branch for the full contract and worked examples.
-
----
 ## Citation 
 The paper describing the development of Epydemix is available [here](https://doi.org/10.1371/journal.pcbi.1013735).
 To reference our work, please use the following citation:
