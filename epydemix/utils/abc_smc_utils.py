@@ -17,7 +17,10 @@ class Perturbation(ABC):
 
     @abstractmethod
     def propose(self, x, rng=None):
-        """Propose a new value based on the current value."""
+        """Propose a new value from the current value ``x``.
+
+        Draw randomness from ``rng`` (a seed or ``np.random.Generator``) so that proposals are reproducible
+        """
         pass
 
     @abstractmethod
