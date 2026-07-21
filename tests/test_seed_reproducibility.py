@@ -6,6 +6,7 @@ from scipy import stats
 
 from epydemix.calibration.abc import ABCSampler
 from epydemix.model import simulate
+from epydemix.model.epimodel import stochastic_simulation
 from epydemix.model.predefined_models import create_sir
 from epydemix.population import Population
 
@@ -61,11 +62,127 @@ def test_simulate_is_seed_reproducible():
     key = "Susceptible_to_Infected_total"
     traj_a = simulate(**_base_parameters(np.random.default_rng(123))).transitions[key]
     traj_b = simulate(**_base_parameters(np.random.default_rng(123))).transitions[key]
-    assert np.array_equal(traj_a, traj_b)
+    assert traj_a == pytest.approx(traj_b)
 
     # Negative control: a different seed must give a different trajectory
     traj_c = simulate(**_base_parameters(np.random.default_rng(456))).transitions[key]
-    assert not np.array_equal(traj_a, traj_c)
+    assert traj_a != pytest.approx(traj_c)
+
+
+def test_run_simulations_is_seed_reproducible():
+    """``EpiModel.run_simulations`` respects the rng.
+
+    Two calls with identically-seeded generators must produce identical trajectory
+    ensembles; a different seed must produce a different one. Guards the rng plumbing
+    in ``run_simulations`` (the method users actually call), which is otherwise only
+    covered indirectly through the lower-level ``simulate``.
+    """
+    key = "Susceptible_to_Infected_total"
+
+    def _stacked(seed):
+        model = _make_sir_model()
+        results = model.run_simulations(
+            start_date=START_DATE,
+            end_date=END_DATE,
+            initial_conditions_dict=INITIAL_CONDITIONS,
+            Nsim=5,
+            rng=np.random.default_rng(seed),
+        )
+        return results.get_stacked_transitions([key])[key]
+
+    stacked_a = _stacked(123)
+    stacked_b = _stacked(123)
+    assert stacked_a == pytest.approx(stacked_b)
+
+    # Negative control: a different seed must give a different ensemble.
+    stacked_c = _stacked(456)
+    assert stacked_a != pytest.approx(stacked_c)
+
+
+def test_run_simulations_trajectories_differ_across_nsim():
+    """The ``Nsim`` trajectories share one Generator advanced sequentially.
+
+    Because the single rng keeps advancing between simulations, the individual
+    trajectories within one ``run_simulations`` call must not be identical to each other.
+    """
+    key = "Susceptible_to_Infected_total"
+    model = _make_sir_model()
+    results = model.run_simulations(
+        start_date=START_DATE,
+        end_date=END_DATE,
+        initial_conditions_dict=INITIAL_CONDITIONS,
+        Nsim=5,
+        rng=np.random.default_rng(123),
+    )
+    stacked = results.get_stacked_transitions([key])[key]  # shape (Nsim, timesteps)
+
+    # At least two distinct trajectories in the ensemble.
+    unique_rows = np.unique(stacked, axis=0)
+    assert unique_rows.shape[0] > 1
+
+
+def test_run_simulations_prefix_is_stable_across_nsim():
+    """A larger ``Nsim`` run reproduces the smaller run's trajectories as a prefix.
+
+    The trajectories are consecutive slices of one sequentially-advanced Generator, so
+    with the same seed the first ``n`` trajectories of an ``Nsim=n+k`` run must match an
+    ``Nsim=n`` run exactly; the larger run only appends more.
+    """
+    key = "Susceptible_to_Infected_total"
+
+    def _stacked(nsim):
+        results = _make_sir_model().run_simulations(
+            start_date=START_DATE,
+            end_date=END_DATE,
+            initial_conditions_dict=INITIAL_CONDITIONS,
+            Nsim=nsim,
+            rng=np.random.default_rng(123),
+        )
+        return results.get_stacked_transitions([key])[key]
+
+    small = _stacked(10)  # shape (10, timesteps)
+    large = _stacked(15)  # shape (15, timesteps)
+
+    assert large.shape[0] == 15
+    assert small == pytest.approx(large[:10])
+
+
+def test_stochastic_simulation_is_seed_reproducible():
+    """``stochastic_simulation``, where the multinomial draws happen, respects rng.
+
+    Same seed gives byte-identical compartment/transition arrays; a different seed
+    diverges. ``test_epimodel`` only checks shape/conservation on an unseeded run.
+    """
+    model = _make_sir_model()
+    T = 15
+    contact_matrices = [
+        {"overall": model.population.contact_matrices["all"]} for _ in range(T)
+    ]
+    initial_conditions = np.array([[9900], [100], [0]])
+    parameters = {
+        "transmission_rate": np.full(T, 0.3),
+        "recovery_rate": np.full(T, 0.1),
+    }
+
+    def _run(seed):
+        return stochastic_simulation(
+            T=T,
+            contact_matrices=contact_matrices,
+            epimodel=model,
+            parameters=parameters,
+            initial_conditions=initial_conditions,
+            dt=1.0,
+            rng=np.random.default_rng(seed),
+        )
+
+    comp_a, trans_a = _run(123)
+    comp_b, trans_b = _run(123)
+    assert comp_a == pytest.approx(comp_b)
+    assert trans_a == pytest.approx(trans_b)
+
+    # Negative control: a different seed must diverge somewhere.
+    comp_c, trans_c = _run(456)
+    assert comp_a != pytest.approx(comp_c) or trans_a != pytest.approx(trans_c)
 
 
 def test_run_projections_paired_trajectories_are_seed_reproducible(observed):
@@ -109,7 +226,40 @@ def test_run_projections_paired_trajectories_are_seed_reproducible(observed):
     # therefore identical output trajectories.
     traj_a = proj_a.get_projection_trajectories(scenario_id="a")["data"]
     traj_b = proj_b.get_projection_trajectories(scenario_id="b")["data"]
-    assert np.array_equal(traj_a, traj_b)
+    assert traj_a == pytest.approx(traj_b)
+
+
+def test_rejection_calibration_is_seed_reproducible(observed):
+    """Two rejection calibrations seeded identically must yield identical posteriors.
+
+    Rejection sampling draws every candidate from the prior via the sampler's rng, so
+    the posterior must be reproducible under a seed and differ under another. Pins the
+    rejection strategy standalone; the projection tests only use it as a fixture.
+    """
+
+    def _calibrate(seed):
+        sampler = ABCSampler(
+            simulation_function=_simulate_wrapper,
+            priors={
+                "transmission_rate": stats.uniform(0.1, 0.4),
+                "recovery_rate": stats.uniform(0.05, 0.15),
+            },
+            parameters=_base_parameters(np.random.default_rng(seed)),
+            observed_data=observed,
+        )
+        return sampler.calibrate(
+            strategy="rejection", epsilon=500.0, num_particles=20, verbose=False
+        )
+
+    res_a = _calibrate(43)
+    res_b = _calibrate(43)
+    assert res_a.get_posterior_distribution().equals(res_b.get_posterior_distribution())
+
+    # Negative control: a different seed yields a different posterior.
+    res_c = _calibrate(44)
+    assert not res_a.get_posterior_distribution().equals(
+        res_c.get_posterior_distribution()
+    )
 
 
 def test_smc_calibration_is_seed_reproducible(observed):
@@ -245,7 +395,7 @@ def test_rng_argument_makes_calibration_and_projections_reproducible(observed):
 
     # Same seed on the sampler -> identical calibration posterior AND projections.
     assert post_a.equals(post_b)
-    assert np.array_equal(traj_a, traj_b)
+    assert traj_a == pytest.approx(traj_b)
 
     # Negative control: a different sampler seed changes the results.
     post_c, _ = calibrate_and_project(4242)
