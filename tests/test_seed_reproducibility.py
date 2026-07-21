@@ -147,6 +147,32 @@ def test_run_simulations_prefix_is_stable_across_nsim():
     assert small == pytest.approx(large[:10])
 
 
+def test_run_simulations_accepts_integer_seed():
+    """The public API accepts an int seed, not just a Generator, and normalizes it.
+
+    Passing ``rng=0`` must behave identically to ``rng=np.random.default_rng(0)``; the
+    int is normalized once at the entry point and threaded down as a Generator.
+    """
+    key = "Susceptible_to_Infected_total"
+
+    def _stacked(rng):
+        return (
+            _make_sir_model()
+            .run_simulations(
+                start_date=START_DATE,
+                end_date=END_DATE,
+                initial_conditions_dict=INITIAL_CONDITIONS,
+                Nsim=5,
+                rng=rng,
+            )
+            .get_stacked_transitions([key])[key]
+        )
+
+    from_int = _stacked(0)
+    from_generator = _stacked(np.random.default_rng(0))
+    assert from_int == pytest.approx(from_generator)
+
+
 def test_stochastic_simulation_is_seed_reproducible():
     """``stochastic_simulation``, where the multinomial draws happen, respects rng.
 

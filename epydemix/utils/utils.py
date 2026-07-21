@@ -484,13 +484,13 @@ def multinomial(
         mask (np.ndarray): boolean array selecting the 'leave' destinations
         dt (float): time step size
         apply_linear_approximation (bool): whether to apply a linear approximation to the probabilities
-        rng (np.random.Generator): random number generator
+        rng (int, np.random.Generator, or None): seed or random number generator
         probs_out (np.ndarray): unused, kept for API compatibility
 
     Returns:
         np.ndarray: array of multinomial samples
     """
-    rng = np.random.default_rng() if rng is None else rng
+    rng = np.random.default_rng(rng)
     probs = _multinomial_probs(n, rates, stay_idx, mask, dt, apply_linear_approximation)
     if n <= 0:
         out = np.zeros(len(rates), dtype=int)

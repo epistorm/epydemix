@@ -99,6 +99,20 @@ def test_multinomial_linear_approximation_branch_is_reproducible():
     assert draw_a != pytest.approx(draw_exact)
 
 
+def test_multinomial_accepts_integer_seed():
+    """An integer seed is normalized like a Generator (fixes the API inconsistency).
+
+    ``multinomial`` previously used the rng argument verbatim, so an int reached
+    ``rng.multinomial`` and crashed. It must now accept an int seed and be reproducible
+    with it, matching a Generator built from the same seed.
+    """
+    draw_from_int = multinomial(1000, RATES, STAY_IDX, MASK, dt=1.0, rng=0)
+    draw_from_gen = multinomial(
+        1000, RATES, STAY_IDX, MASK, dt=1.0, rng=np.random.default_rng(0)
+    )
+    assert draw_from_int == pytest.approx(draw_from_gen)
+
+
 def test_multinomial_only_leaves_to_masked_destinations():
     """No individuals may flow to destinations excluded by the mask.
 
