@@ -255,6 +255,47 @@ def test_run_projections_paired_trajectories_are_seed_reproducible(observed):
     assert traj_a == pytest.approx(traj_b)
 
 
+def test_run_projections_explicit_rng_overrides_and_is_reproducible(observed):
+    """An explicit ``rng=`` seeds ``run_projections`` and overrides other seed sources.
+
+    Covers the highest-precedence ``rng is not None`` branch: passing a seed directly
+    must be reproducible and must take precedence over ``parameters["rng"]``. The two
+    calls below use different ``parameters["rng"]`` but the same explicit ``rng``, so
+    they must still produce identical posterior samples and trajectories.
+    """
+    sampler = ABCSampler(
+        simulation_function=_simulate_wrapper,
+        priors={
+            "transmission_rate": stats.uniform(0.1, 0.4),
+            "recovery_rate": stats.uniform(0.05, 0.15),
+        },
+        parameters=_base_parameters(np.random.default_rng(0)),
+        observed_data=observed,
+    )
+    sampler.calibrate(
+        strategy="rejection", epsilon=500.0, num_particles=20, verbose=False
+    )
+    assert sampler.results.get_posterior_distribution().drop_duplicates().shape[0] > 1
+
+    proj_a = sampler.run_projections(
+        parameters=_base_parameters(np.random.default_rng(1)),
+        iterations=10,
+        scenario_id="a",
+        rng=7,
+    )
+    proj_b = sampler.run_projections(
+        parameters=_base_parameters(np.random.default_rng(2)),  # different param seed
+        iterations=10,
+        scenario_id="b",
+        rng=7,  # same explicit seed must win, making the two runs identical
+    )
+
+    assert proj_a.projection_parameters["a"].equals(proj_b.projection_parameters["b"])
+    traj_a = proj_a.get_projection_trajectories(scenario_id="a")["data"]
+    traj_b = proj_b.get_projection_trajectories(scenario_id="b")["data"]
+    assert traj_a == pytest.approx(traj_b)
+
+
 def test_rejection_calibration_is_seed_reproducible(observed):
     """Two rejection calibrations seeded identically must yield identical posteriors.
 

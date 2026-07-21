@@ -724,7 +724,13 @@ class ABCSampler:
         # scenarios (two run_projections calls with the same seed) get identical
         # children. Deriving from the seed's entropy also makes this independent of
         # how far the sampler's rng was advanced during calibration.
-        base_seed_seq = np.random.default_rng(seed_source).bit_generator.seed_seq
+        base_bit_generator = np.random.default_rng(seed_source).bit_generator
+        # ``bit_generator.seed_seq`` is public only since NumPy 1.25; fall back to the
+        # private backing attribute on older NumPy (e.g. the 1.24.x that ships with
+        # Python 3.8).
+        base_seed_seq = getattr(base_bit_generator, "seed_seq", None)
+        if base_seed_seq is None:
+            base_seed_seq = base_bit_generator._seed_seq
         child_seed_seqs = [
             np.random.SeedSequence(
                 base_seed_seq.entropy,
