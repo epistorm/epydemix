@@ -26,11 +26,28 @@ class ABCSampler:
         parameters: Dict[str, Any],
         observed_data: Any,
         distance_function: Callable = rmse,
+        rng: Optional[Any] = None,
     ):
-        """Initialize ABC calibration."""
+        """Initialize ABC calibration.
+
+        Args:
+            rng: Optional seed or ``np.random.Generator`` making calibration
+                reproducible. It governs all ABC randomness (prior sampling,
+                perturbation kernels, resampling) and, when seeding is requested
+                (either here or via an ``"rng"`` key in ``parameters``), is also
+                injected into the simulation as an ``rng`` key. If None and
+                ``parameters`` has no ``"rng"`` key, a fresh unseeded Generator is
+                used and the simulation is not seeded.
+        """
         self.simulation_function = simulation_function
         self.priors = priors
         self.parameters = parameters.copy()
+        # Whether the user asked for reproducibility (via rng= or parameters["rng"]).
+        # Only then we inject rng into the simulation params.
+        self._seed_requested = rng is not None or "rng" in self.parameters
+        self.rng = np.random.default_rng(
+            rng if rng is not None else self.parameters.get("rng")
+        )
         self.observed_data = {"data": observed_data}
         self.distance_function = distance_function
         self.param_names = list(priors.keys())
