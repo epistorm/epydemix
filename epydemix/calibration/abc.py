@@ -43,7 +43,7 @@ class ABCSampler:
         self.priors = priors
         self.parameters = parameters.copy()
         # Whether the user asked for reproducibility (via rng= or parameters["rng"]).
-        # Only then we inject rng into the simulation params.
+        # Only then do we inject rng into the simulation params.
         self._seed_requested = rng is not None or "rng" in self.parameters
         self.rng = np.random.default_rng(
             rng if rng is not None else self.parameters.get("rng")
@@ -678,6 +678,7 @@ class ABCSampler:
         iterations: int = 100,
         generation: Optional[int] = None,
         scenario_id: str = "baseline",
+        rng: Optional[Any] = None,
     ) -> CalibrationResults:
         """
         Run projections using parameters sampled from the posterior distribution.
@@ -687,6 +688,15 @@ class ABCSampler:
             iterations: Number of projection iterations to run. Default is 100.
             generation: Which generation to use for posterior. If None, the last generation is used.
             scenario_id: Identifier for this projection scenario. Default is "baseline".
+            rng: Optional seed or ``np.random.Generator`` for this call, seeding both
+                the posterior resampling and the simulation of every iteration.
+                Results depend only on the seed, so two scenarios given the same seed
+                are paired: they draw the same posterior samples and diverge only
+                where their scenario-specific parameters differ. If None, the seed is
+                taken from an ``"rng"`` key in ``parameters``, otherwise from the
+                sampler's own ``rng`` (so seeding the ``ABCSampler`` already makes its
+                projections reproducible). Pass ``rng`` explicitly only to override
+                this, e.g. to draw an independent ensemble from the same calibration.
 
         Returns:
             CalibrationResults: A new CalibrationResults object containing the original results plus the new projections
@@ -696,11 +706,42 @@ class ABCSampler:
         posterior = self.results.get_posterior_distribution(generation)
         weights = self.results.get_weights(generation)
 
+        # Determine the seed source and whether to seed the simulation. Precedence:
+        # this call's rng= arg, then an "rng" key in the projection parameters, then
+        # the sampler's own rng, so seeding the ABCSampler makes calibration and
+        # projections reproducible as a set.
+        # If none of these was seeded, projections run unseeded and no rng is injected.
+        if rng is not None:
+            seed_source, inject_rng = rng, True
+        elif "rng" in parameters:
+            seed_source, inject_rng = parameters["rng"], True
+        elif self._seed_requested:
+            seed_source, inject_rng = self.rng, True
+        else:
+            seed_source, inject_rng = None, False
+
+        # Build a fixed child rng per iteration (trajectory) via spawn_key, so paired
+        # scenarios (two run_projections calls with the same seed) get identical
+        # children. Deriving from the seed's entropy also makes this independent of
+        # how far the sampler's rng was advanced during calibration.
+        base_seed_seq = np.random.default_rng(seed_source).bit_generator.seed_seq
+        child_seed_seqs = [
+            np.random.SeedSequence(
+                base_seed_seq.entropy,
+                spawn_key=base_seed_seq.spawn_key + (i,),
+                pool_size=base_seed_seq.pool_size,
+            )
+            for i in range(iterations)
+        ]
+
         # Run projections and store results
         projections, posterior_samples = [], {}
-        for _ in range(iterations):
+        for i in range(iterations):
+            # Each iteration (trajectory) uses its own child rng
+            rng_i = np.random.default_rng(child_seed_seqs[i])
+
             # Sample from posterior according to weights
-            idx = np.random.choice(len(posterior), p=weights / weights.sum())
+            idx = rng_i.choice(len(posterior), p=weights / weights.sum())
             posterior_sample = posterior.iloc[idx]
 
             for k in posterior_sample.keys():
@@ -708,9 +749,12 @@ class ABCSampler:
                     posterior_samples[k] = []
                 posterior_samples[k].append(posterior_sample[k])
 
-            # Prepare and run simulation
             proj_params = parameters.copy()
             proj_params.update(posterior_sample)
+            # Set rng last so this iteration's child overrides any "rng" already in
+            # parameters.
+            if inject_rng:
+                proj_params["rng"] = rng_i
             result = self.simulation_function(proj_params)
             projections.append(result)
 
