@@ -449,7 +449,7 @@ class ABCSampler:
 
     def _sample_parameters(self) -> List[float]:
         """Sample parameters from priors."""
-        return sample_prior(self.priors, self.param_names)
+        return sample_prior(self.priors, self.param_names, self.rng)
 
     def _create_results(
         self,
