@@ -86,13 +86,15 @@ class DefaultPerturbationDiscrete(Perturbation):
         pass
 
 
-def sample_prior(priors, param_names):
+def sample_prior(priors, param_names, rng=None):
     """Samples a parameter set from the given prior distributions.
     priors: dictionary mapping parameter names to scipy.stats distributions
     param_names: list of parameter names to maintain consistent order
+    rng: optional np.random.Generator (or seed) used for sampling
     Returns: list of sampled parameter values in the order of param_names
     """
-    return [priors[param].rvs() for param in param_names]
+    rng = np.random.default_rng(rng)
+    return [priors[param].rvs(random_state=rng) for param in param_names]
 
 
 def compute_effective_sample_size(weights: np.ndarray) -> float:
