@@ -16,7 +16,7 @@ class Perturbation(ABC):
         self.param_name = param_name
 
     @abstractmethod
-    def propose(self, x):
+    def propose(self, x, rng=None):
         """Propose a new value based on the current value."""
         pass
 
@@ -40,9 +40,10 @@ class DefaultPerturbationContinuous(Perturbation):
         super().__init__(param_name)
         self.std = 0.1
 
-    def propose(self, x):
+    def propose(self, x, rng=None):
         """Propose a new value based on the current value."""
-        return np.random.normal(x, self.std)
+        rng = np.random.default_rng(rng)
+        return rng.normal(x, self.std)
 
     def pdf(self, x, center):
         """Evaluate the PDF of the kernel."""
@@ -64,12 +65,13 @@ class DefaultPerturbationDiscrete(Perturbation):
         self.jump_probability = jump_probability
         self.rest_prob = jump_probability / (len(self.support) - 1)
 
-    def propose(self, x):
+    def propose(self, x, rng=None):
         """Propose a new value for the discrete parameter."""
-        if np.random.rand() < self.jump_probability:
+        rng = np.random.default_rng(rng)
+        if rng.random() < self.jump_probability:
             proposed = x
             while proposed == x:
-                proposed = np.random.choice(self.support)
+                proposed = rng.choice(self.support)
             return proposed
         return x
 
