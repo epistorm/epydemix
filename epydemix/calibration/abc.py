@@ -554,9 +554,8 @@ class ABCSampler:
             ):
                 return None
 
-            params = sample_prior(self.priors, self.param_names)
-            full_params = {**self.parameters, **dict(zip(self.param_names, params))}
-            simulated_data = self.simulation_function(full_params)
+            params = sample_prior(self.priors, self.param_names, self.rng)
+            simulated_data = self._run_simulation(params)
             dist = self.distance_function(
                 data=self.observed_data, simulation=simulated_data
             )
