@@ -609,12 +609,14 @@ class ABCSampler:
                     return None
 
                 # Resample a particle based on weights
-                index = np.random.choice(len(particles), p=weights / weights.sum())
+                index = self.rng.choice(len(particles), p=weights / weights.sum())
                 candidate_params = particles[index]
 
                 # Propose new parameters (perturbation kernel)
                 perturbed_params = [
-                    perturbations[self.param_names[i]].propose(candidate_params[i])
+                    perturbations[self.param_names[i]].propose(
+                        candidate_params[i], self.rng
+                    )
                     for i in range(len(self.param_names))
                 ]
 
