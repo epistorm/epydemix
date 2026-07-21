@@ -430,6 +430,12 @@ class ABCSampler:
     def _run_simulation(self, params: List[float]) -> Dict[str, Any]:
         """Run a single simulation with given parameters."""
         full_params = {**self.parameters, **dict(zip(self.param_names, params))}
+        # Inject the sampler's Generator only when the user asked for reproducibility
+        # (rng= or parameters["rng"]). This makes rng-aware simulations (e.g.
+        # epydemix's `simulate`) reproducible and, when an int/seed was passed, avoids
+        # reseeding every particle identically.
+        if self._seed_requested:
+            full_params["rng"] = self.rng
         simulation = self.simulation_function(full_params)
         return self._validate_simulation(simulation)
 
