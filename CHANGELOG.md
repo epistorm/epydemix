@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.3.2] - 2026-07-29
+
+### Changed
+
+* **Reproducible ABC-SMC calibration.** `ABCSampler` now accepts an `rng` argument (an `int` seed or `np.random.Generator`) that governs *all* calibration randomness — prior sampling, perturbation kernel proposals, and posterior resampling — not just the underlying simulation. Previously, only `simulate()`/`EpiModel.run_simulations()` accepted an `rng`; the ABC-SMC layer itself (`sample_prior`, `Perturbation.propose`, particle resampling in `_run_smc_generation` and `run_projections`) drew from the unseeded global `np.random` state, so two calibration runs with an identically-seeded simulation could still diverge. `Perturbation.propose()` (and its `DefaultPerturbationContinuous`/`DefaultPerturbationDiscrete` implementations) and `sample_prior()` now take an optional `rng` parameter accordingly; this is a signature change for any custom `Perturbation` subclass.
+* `ABCSampler.run_projections()` now accepts its own optional `rng` argument. Precedence for the seed source is: this call's `rng=`, then an `"rng"` key in `parameters`, then the sampler's own `rng` (so seeding the `ABCSampler` already makes its projections reproducible by default). Each of the `iterations` trajectories gets an independent child generator spawned (via `SeedSequence.spawn_key`) from that seed, so trajectories don't share a single advancing stream, and two `run_projections` calls given the same seed draw the same paired posterior samples.
+* `EpiModel.run_simulations()`, `simulate()`, `stochastic_simulation()`, and `multinomial()` now accept an integer seed directly for `rng` (in addition to an `np.random.Generator`), via `np.random.default_rng(rng)`.
+
+### Fixed
+
+* `run_projections` no longer breaks on NumPy < 1.25, where `BitGenerator.seed_seq` is not yet a public attribute; it now falls back to the private `_seed_seq` when the public accessor is unavailable.
+
+---
+
 ## [1.3.1] - 2026-07-02
 
 ### Fixed
