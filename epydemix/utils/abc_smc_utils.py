@@ -16,8 +16,11 @@ class Perturbation(ABC):
         self.param_name = param_name
 
     @abstractmethod
-    def propose(self, x):
-        """Propose a new value based on the current value."""
+    def propose(self, x, rng=None):
+        """Propose a new value from the current value ``x``.
+
+        Draw randomness from ``rng`` (a seed or ``np.random.Generator``) so that proposals are reproducible
+        """
         pass
 
     @abstractmethod
@@ -40,9 +43,10 @@ class DefaultPerturbationContinuous(Perturbation):
         super().__init__(param_name)
         self.std = 0.1
 
-    def propose(self, x):
+    def propose(self, x, rng=None):
         """Propose a new value based on the current value."""
-        return np.random.normal(x, self.std)
+        rng = np.random.default_rng(rng)
+        return rng.normal(x, self.std)
 
     def pdf(self, x, center):
         """Evaluate the PDF of the kernel."""
@@ -64,12 +68,13 @@ class DefaultPerturbationDiscrete(Perturbation):
         self.jump_probability = jump_probability
         self.rest_prob = jump_probability / (len(self.support) - 1)
 
-    def propose(self, x):
+    def propose(self, x, rng=None):
         """Propose a new value for the discrete parameter."""
-        if np.random.rand() < self.jump_probability:
+        rng = np.random.default_rng(rng)
+        if rng.random() < self.jump_probability:
             proposed = x
             while proposed == x:
-                proposed = np.random.choice(self.support)
+                proposed = rng.choice(self.support)
             return proposed
         return x
 
@@ -86,13 +91,15 @@ class DefaultPerturbationDiscrete(Perturbation):
         pass
 
 
-def sample_prior(priors, param_names):
+def sample_prior(priors, param_names, rng=None):
     """Samples a parameter set from the given prior distributions.
     priors: dictionary mapping parameter names to scipy.stats distributions
     param_names: list of parameter names to maintain consistent order
+    rng: optional np.random.Generator (or seed) used for sampling
     Returns: list of sampled parameter values in the order of param_names
     """
-    return [priors[param].rvs() for param in param_names]
+    rng = np.random.default_rng(rng)
+    return [priors[param].rvs(random_state=rng) for param in param_names]
 
 
 def compute_effective_sample_size(weights: np.ndarray) -> float:

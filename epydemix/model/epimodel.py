@@ -770,7 +770,7 @@ class EpiModel:
         resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
         fill_method: Optional[str] = "ffill",
         apply_linear_approximation: bool = False,
-        rng: Optional[np.random.Generator] = None,
+        rng: Optional[Union[int, np.random.Generator]] = None,
     ) -> SimulationResults:
         """
         Simulates the epidemic model multiple times over the given time period.
@@ -787,7 +787,7 @@ class EpiModel:
             resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
             fill_method (str, optional): Method to fill NaN values after resampling. Default is "ffill".
             apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
-            rng (np.random.Generator, optional): Random number generator. Default is None.
+            rng (int or np.random.Generator, optional): Seed or random number generator. Default is None.
 
         Returns:
             SimulationResults: An object containing all simulation trajectories.
@@ -796,8 +796,7 @@ class EpiModel:
             RuntimeError: If the simulation fails.
         """
 
-        if rng is None:
-            rng = np.random.default_rng()
+        rng = np.random.default_rng(rng)
 
         # Run multiple simulations and collect trajectories
         try:
@@ -848,7 +847,7 @@ def simulate(
     resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
     fill_method: Optional[str] = "ffill",
     apply_linear_approximation: bool = False,
-    rng: Optional[np.random.Generator] = None,
+    rng: Optional[Union[int, np.random.Generator]] = None,
     contact_matrices: Optional[List[Dict[str, np.ndarray]]] = None,
     simulation_dates: Optional[List[pd.Timestamp]] = None,
     **kwargs,
@@ -868,7 +867,7 @@ def simulate(
         resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
         fill_method (str, optional): The method to use when filling NaN values after resampling. Default is "ffill".
         apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
-        rng (np.random.Generator, optional): Random number generator. Default is None.
+        rng (int or np.random.Generator, optional): Seed or random number generator. Default is None.
         contact_matrices (list, optional): A list of contact matrices for the simulation. Default is None.
         simulation_dates (list, optional): A list of simulation dates. Default is None.
         **kwargs: Additional parameters to overwrite model parameters during the simulation.
@@ -879,8 +878,7 @@ def simulate(
     Raises:
         ValueError: If the model has no transitions defined.
     """
-    if rng is None:
-        rng = np.random.default_rng()
+    rng = np.random.default_rng(rng)
 
     # check that the model has transitions
     if len(epimodel.transitions_list) == 0:
@@ -969,7 +967,7 @@ def stochastic_simulation(
     initial_conditions: np.ndarray,
     dt: float,
     apply_linear_approximation: bool = False,
-    rng: Optional[np.random.Generator] = None,
+    rng: Optional[Union[int, np.random.Generator]] = None,
 ) -> np.ndarray:
     """
     Run a stochastic simulation of the epidemic model.
@@ -982,10 +980,9 @@ def stochastic_simulation(
         initial_conditions: Initial population distribution
         dt: Time step size
         apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
-        rng (np.random.Generator, optional): Random number generator. Default is None.
+        rng (int or np.random.Generator, optional): Seed or random number generator. Default is None.
     """
-    if rng is None:
-        rng = np.random.default_rng()
+    rng = np.random.default_rng(rng)
 
     # Pre-allocate arrays
     N = len(epimodel.population.Nk)

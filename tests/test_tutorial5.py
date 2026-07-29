@@ -96,9 +96,10 @@ def test_calibration_advanced(mock_population):
             super().__init__(param_name)
             self.scale = scale
 
-        def propose(self, x):
+        def propose(self, x, rng=None):
             """Propose a new value by adding scaled noise (with positive constraint)."""
-            return np.random.uniform(x - self.scale, x + self.scale)
+            rng = np.random.default_rng(rng)
+            return rng.uniform(x - self.scale, x + self.scale)
 
         def pdf(self, x, center):
             """Evaluate the PDF of the kernel."""
