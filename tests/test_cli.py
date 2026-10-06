@@ -185,10 +185,13 @@ CUSTOM_CONFIG = {
 class TestValidateSimulationWindow:
     """Dates, time step and replicate count are checked before any run."""
 
-    @pytest.mark.parametrize("start,end", [
-        ("2023-06-01", "2023-01-01"),   # inverted
-        ("2023-01-01", "2023-01-01"),   # empty
-    ])
+    @pytest.mark.parametrize(
+        "start,end",
+        [
+            ("2023-06-01", "2023-01-01"),  # inverted
+            ("2023-01-01", "2023-01-01"),  # empty
+        ],
+    )
     def test_end_must_follow_start(self, start, end):
         cfg = _with(MINIMAL_CONFIG, simulation={"start_date": start, "end_date": end})
         result = validate_config(cfg)
@@ -197,29 +200,43 @@ class TestValidateSimulationWindow:
 
     @pytest.mark.parametrize("bad", ["next tuesday", "2023-13-45", 20230101])
     def test_unparseable_date(self, bad):
-        cfg = _with(MINIMAL_CONFIG, simulation={"start_date": bad, "end_date": "2023-01-30"})
+        cfg = _with(
+            MINIMAL_CONFIG, simulation={"start_date": bad, "end_date": "2023-01-30"}
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "start_date" in _errors(result)
 
     def test_yaml_date_objects_are_accepted(self):
         import datetime
-        cfg = _with(MINIMAL_CONFIG, simulation={
-            "start_date": datetime.date(2023, 1, 1),
-            "end_date": datetime.date(2023, 1, 30),
-        })
+
+        cfg = _with(
+            MINIMAL_CONFIG,
+            simulation={
+                "start_date": datetime.date(2023, 1, 1),
+                "end_date": datetime.date(2023, 1, 30),
+            },
+        )
         assert validate_config(cfg)["valid"]
 
     def test_window_too_short_for_step(self):
-        cfg = _with(MINIMAL_CONFIG, simulation={"start_date": "2023-01-01", "end_date": "2023-01-02"})
+        cfg = _with(
+            MINIMAL_CONFIG,
+            simulation={"start_date": "2023-01-01", "end_date": "2023-01-02"},
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "time steps" in _errors(result)
 
     def test_short_window_is_fine_with_smaller_step(self):
-        cfg = _with(MINIMAL_CONFIG, simulation={
-            "start_date": "2023-01-01", "end_date": "2023-01-02", "dt": 0.5,
-        })
+        cfg = _with(
+            MINIMAL_CONFIG,
+            simulation={
+                "start_date": "2023-01-01",
+                "end_date": "2023-01-02",
+                "dt": 0.5,
+            },
+        )
         assert validate_config(cfg)["valid"]
 
     @pytest.mark.parametrize("bad", [0, -3, 2.5, True])
@@ -239,7 +256,10 @@ class TestValidateSimulationWindow:
         assert "dt" in _errors(result)
 
     def test_projection_validator_checks_dates_too(self, tmp_path):
-        cfg = _with(MINIMAL_CONFIG, simulation={"start_date": "2023-06-01", "end_date": "2023-01-01"})
+        cfg = _with(
+            MINIMAL_CONFIG,
+            simulation={"start_date": "2023-06-01", "end_date": "2023-01-01"},
+        )
         result = validate_projection_config(cfg, str(tmp_path))
         assert "must be after" in _errors(result)
 
@@ -247,25 +267,40 @@ class TestValidateSimulationWindow:
 class TestValidateParameterValues:
     """Parameter values must be numbers or lists of numbers, for any model."""
 
-    @pytest.mark.parametrize("value", [
-        0.3, 3, [0.3, 0.2, 0.1], [[0.3, 0.2], [0.1, 0.1]],
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            0.3,
+            3,
+            [0.3, 0.2, 0.1],
+            [[0.3, 0.2], [0.1, 0.1]],
+        ],
+    )
     def test_accepted_shapes(self, value):
-        cfg = _with(MINIMAL_CONFIG, parameters={"transmission_rate": value, "recovery_rate": 0.1})
+        cfg = _with(
+            MINIMAL_CONFIG,
+            parameters={"transmission_rate": value, "recovery_rate": 0.1},
+        )
         assert validate_config(cfg)["valid"], _errors(validate_config(cfg))
 
-    @pytest.mark.parametrize("value,fragment", [
-        ("fast", "not a number"),
-        ("3e-1", "decimal point"),       # PyYAML reads this as a string
-        ("0.3", "remove the quotes"),
-        (None, "no value"),
-        (True, "must be a number"),
-        ([], "must be a number"),
-        ([0.3, "x"], "must be a number"),
-        ({"a": 1}, "must be a number"),
-    ])
+    @pytest.mark.parametrize(
+        "value,fragment",
+        [
+            ("fast", "not a number"),
+            ("3e-1", "decimal point"),  # PyYAML reads this as a string
+            ("0.3", "remove the quotes"),
+            (None, "no value"),
+            (True, "must be a number"),
+            ([], "must be a number"),
+            ([0.3, "x"], "must be a number"),
+            ({"a": 1}, "must be a number"),
+        ],
+    )
     def test_rejected_values(self, value, fragment):
-        cfg = _with(MINIMAL_CONFIG, parameters={"transmission_rate": value, "recovery_rate": 0.1})
+        cfg = _with(
+            MINIMAL_CONFIG,
+            parameters={"transmission_rate": value, "recovery_rate": 0.1},
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert fragment in _errors(result)
@@ -292,11 +327,14 @@ class TestValidateParameterValues:
 class TestValidatePredefinedParameters:
     """Names and ranges come from the model's own parameter registry."""
 
-    @pytest.mark.parametrize("name,value,fragment", [
-        ("recovery_rate", 50, "above the maximum"),
-        ("transmission_rate", -2, "below the minimum"),
-        ("transmission_rate", [0.3, 12.0], "above the maximum"),
-    ])
+    @pytest.mark.parametrize(
+        "name,value,fragment",
+        [
+            ("recovery_rate", 50, "above the maximum"),
+            ("transmission_rate", -2, "below the minimum"),
+            ("transmission_rate", [0.3, 12.0], "above the maximum"),
+        ],
+    )
     def test_out_of_range(self, name, value, fragment):
         params = {"transmission_rate": 0.3, "recovery_rate": 0.1, name: value}
         result = validate_config(_with(MINIMAL_CONFIG, parameters=params))
@@ -309,14 +347,17 @@ class TestValidatePredefinedParameters:
         assert not result["valid"]
         assert "did you mean 'transmission_rate'" in _errors(result)
 
-    @pytest.mark.parametrize("name,hint", [
-        ("vaccine_efficacy", "model.vaccination: true"),
-        ("waning_rate", "model.waning_immunity: true"),
-        ("mortality_rate", "model.outcome: deaths"),
-        ("hospitalization_rate", "model.outcome: hospitalization"),
-        ("incubation_rate", "SEIR or SEIAR"),
-        ("asymptomatic_fraction", "SEIAR"),
-    ])
+    @pytest.mark.parametrize(
+        "name,hint",
+        [
+            ("vaccine_efficacy", "model.vaccination: true"),
+            ("waning_rate", "model.waning_immunity: true"),
+            ("mortality_rate", "model.outcome: deaths"),
+            ("hospitalization_rate", "model.outcome: hospitalization"),
+            ("incubation_rate", "SEIR or SEIAR"),
+            ("asymptomatic_fraction", "SEIAR"),
+        ],
+    )
     def test_inactive_parameters_are_rejected_with_a_hint(self, name, hint):
         # The model would accept and silently ignore these.
         params = {"transmission_rate": 0.3, "recovery_rate": 0.1, name: 0.5}
@@ -328,34 +369,58 @@ class TestValidatePredefinedParameters:
         cfg = _with(
             MINIMAL_CONFIG,
             model={"type": "SIR", "vaccination": True},
-            parameters={"transmission_rate": 0.3, "recovery_rate": 0.1,
-                        "vaccine_efficacy": 0.8},
+            parameters={
+                "transmission_rate": 0.3,
+                "recovery_rate": 0.1,
+                "vaccine_efficacy": 0.8,
+            },
         )
         assert validate_config(cfg)["valid"], _errors(validate_config(cfg))
 
     def test_override_on_unknown_parameter(self):
-        cfg = _with(MINIMAL_CONFIG, overrides=[{
-            "parameter": "transmision_rate", "start_date": "2023-01-10",
-            "end_date": "2023-01-20", "value": 0.1,
-        }])
+        cfg = _with(
+            MINIMAL_CONFIG,
+            overrides=[
+                {
+                    "parameter": "transmision_rate",
+                    "start_date": "2023-01-10",
+                    "end_date": "2023-01-20",
+                    "value": 0.1,
+                }
+            ],
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "overrides[0].parameter" in _errors(result)
 
     def test_override_value_out_of_range(self):
-        cfg = _with(MINIMAL_CONFIG, overrides=[{
-            "parameter": "transmission_rate", "start_date": "2023-01-10",
-            "end_date": "2023-01-20", "value": 99,
-        }])
+        cfg = _with(
+            MINIMAL_CONFIG,
+            overrides=[
+                {
+                    "parameter": "transmission_rate",
+                    "start_date": "2023-01-10",
+                    "end_date": "2023-01-20",
+                    "value": 99,
+                }
+            ],
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "overrides[0].value" in _errors(result)
 
     def test_valid_override(self):
-        cfg = _with(MINIMAL_CONFIG, overrides=[{
-            "parameter": "transmission_rate", "start_date": "2023-01-10",
-            "end_date": "2023-01-20", "value": 0.05,
-        }])
+        cfg = _with(
+            MINIMAL_CONFIG,
+            overrides=[
+                {
+                    "parameter": "transmission_rate",
+                    "start_date": "2023-01-10",
+                    "end_date": "2023-01-20",
+                    "value": 0.05,
+                }
+            ],
+        )
         assert validate_config(cfg)["valid"], _errors(validate_config(cfg))
 
     def _calibration(self, prior_name):
@@ -387,24 +452,30 @@ class TestValidateCustomReferences:
         return cfg
 
     def test_reference_config_is_valid(self):
-        assert validate_config(CUSTOM_CONFIG)["valid"], _errors(validate_config(CUSTOM_CONFIG))
+        assert validate_config(CUSTOM_CONFIG)["valid"], _errors(
+            validate_config(CUSTOM_CONFIG)
+        )
 
     def test_undeclared_target(self):
         cfg = self._transitions(
-            {"source": "S", "target": "X", "kind": "spontaneous", "params": "gamma"})
+            {"source": "S", "target": "X", "kind": "spontaneous", "params": "gamma"}
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "transitions[0].target 'X'" in _errors(result)
 
     def test_missing_source(self):
-        cfg = self._transitions({"target": "R", "kind": "spontaneous", "params": "gamma"})
+        cfg = self._transitions(
+            {"target": "R", "kind": "spontaneous", "params": "gamma"}
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "'source' is required" in _errors(result)
 
     def test_undeclared_infecting_compartment(self):
         cfg = self._transitions(
-            {"source": "S", "target": "I", "kind": "mediated", "params": ["beta", "Q"]})
+            {"source": "S", "target": "I", "kind": "mediated", "params": ["beta", "Q"]}
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "params[1] 'Q'" in _errors(result)
@@ -412,14 +483,16 @@ class TestValidateCustomReferences:
     @pytest.mark.parametrize("params", [["beta"], "beta", ["beta", "I", "R"]])
     def test_mediated_params_shape(self, params):
         cfg = self._transitions(
-            {"source": "S", "target": "I", "kind": "mediated", "params": params})
+            {"source": "S", "target": "I", "kind": "mediated", "params": params}
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "[rate, infecting compartment]" in _errors(result)
 
     def test_undefined_rate_parameter(self):
         cfg = self._transitions(
-            {"source": "I", "target": "R", "kind": "spontaneous", "params": "delta"})
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": "delta"}
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "'delta' is not a defined parameter" in _errors(result)
@@ -427,26 +500,35 @@ class TestValidateCustomReferences:
     @pytest.mark.parametrize("rate", ["beta * gamma", "beta / (1 + gamma)", 0.25])
     def test_valid_rates(self, rate):
         cfg = self._transitions(
-            {"source": "I", "target": "R", "kind": "spontaneous", "params": rate})
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": rate}
+        )
         assert validate_config(cfg)["valid"], _errors(validate_config(cfg))
 
     def test_expression_with_undefined_name(self):
         cfg = self._transitions(
-            {"source": "I", "target": "R", "kind": "spontaneous", "params": "beta * gama"})
+            {
+                "source": "I",
+                "target": "R",
+                "kind": "spontaneous",
+                "params": "beta * gama",
+            }
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "'gama'" in _errors(result)
 
     def test_compartment_inside_a_rate(self):
         cfg = self._transitions(
-            {"source": "I", "target": "R", "kind": "spontaneous", "params": "gamma * I"})
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": "gamma * I"}
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "not compartments" in _errors(result)
 
     def test_malformed_expression(self):
         cfg = self._transitions(
-            {"source": "I", "target": "R", "kind": "spontaneous", "params": "gamma *"})
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": "gamma *"}
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "not a valid expression" in _errors(result)
@@ -463,10 +545,14 @@ class TestValidateCustomReferences:
 
     def test_override_on_undefined_parameter(self):
         cfg = copy.deepcopy(CUSTOM_CONFIG)
-        cfg["overrides"] = [{
-            "parameter": "bta", "start_date": "2023-01-10",
-            "end_date": "2023-01-20", "value": 0.1,
-        }]
+        cfg["overrides"] = [
+            {
+                "parameter": "bta",
+                "start_date": "2023-01-10",
+                "end_date": "2023-01-20",
+                "value": 0.1,
+            }
+        ]
         result = validate_config(cfg)
         assert not result["valid"]
         assert "no effect" in _errors(result)
@@ -478,10 +564,15 @@ class TestValidateCustomReferences:
         assert "transitions[0] must be a mapping" in _errors(result)
 
     def test_scheduled_eligible_must_be_declared(self):
-        cfg = self._transitions({
-            "source": "S", "target": "R", "kind": "scheduled",
-            "schedule": [0, 0, 0], "eligible": ["S", "V"],
-        })
+        cfg = self._transitions(
+            {
+                "source": "S",
+                "target": "R",
+                "kind": "scheduled",
+                "schedule": [0, 0, 0],
+                "eligible": ["S", "V"],
+            }
+        )
         result = validate_config(cfg)
         assert not result["valid"]
         assert "eligible 'V'" in _errors(result)
@@ -516,14 +607,20 @@ class TestValidateInitialConditionNames:
 
     def test_module_compartment_with_module_enabled(self):
         result = self._ic(
-            {"Susceptible": 0.89, "Infected": 0.01, "Recovered": 0.0, "Vaccinated": 0.1},
+            {
+                "Susceptible": 0.89,
+                "Infected": 0.01,
+                "Recovered": 0.0,
+                "Vaccinated": 0.1,
+            },
             model={"type": "SIR", "vaccination": True},
         )
         assert result["valid"], _errors(result)
 
     def test_module_compartment_with_module_off(self):
         result = self._ic(
-            {"Susceptible": 0.89, "Infected": 0.01, "Recovered": 0.0, "Vaccinated": 0.1})
+            {"Susceptible": 0.89, "Infected": 0.01, "Recovered": 0.0, "Vaccinated": 0.1}
+        )
         assert not result["valid"]
         assert "'Vaccinated'" in _errors(result)
 
@@ -890,9 +987,7 @@ class TestCLIRunSeed:
     def _run(tmp_path, config, name):
         config_path = _write_yaml(tmp_path, config, name=f"{name}.yaml")
         output_path = str(tmp_path / f"{name}.epx")
-        result = CliRunner().invoke(
-            cli, ["run", config_path, "--output", output_path]
-        )
+        result = CliRunner().invoke(cli, ["run", config_path, "--output", output_path])
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         with open(os.path.join(output_path, "manifest.json")) as fh:
             return output_path, json.load(fh)

@@ -229,8 +229,7 @@ def _validate_simulation_window(sim_cfg: Dict[str, Any], errors: list) -> None:
             stamp = pd.NaT
         if pd.isna(stamp):
             errors.append(
-                f"simulation.{key} {raw!r} is not a valid date; "
-                "write it as YYYY-MM-DD"
+                f"simulation.{key} {raw!r} is not a valid date; write it as YYYY-MM-DD"
             )
         else:
             dates[key] = stamp
@@ -326,12 +325,14 @@ def _parameter_uses(config: Dict[str, Any], params: Dict[str, Any]) -> list:
         uses += [("calibration.priors", name, _NO_VALUE, None) for name in priors]
     for i, ovr in enumerate(config.get("overrides") or []):
         if isinstance(ovr, dict) and "parameter" in ovr:
-            uses.append((
-                f"overrides[{i}].parameter",
-                ovr["parameter"],
-                ovr.get("value", _NO_VALUE),
-                f"overrides[{i}].value",
-            ))
+            uses.append(
+                (
+                    f"overrides[{i}].parameter",
+                    ovr["parameter"],
+                    ovr.get("value", _NO_VALUE),
+                    f"overrides[{i}].value",
+                )
+            )
     return uses
 
 
@@ -349,8 +350,10 @@ def _inactive_parameter_hint(name: str) -> Optional[str]:
         (ps.waning_immunity_specs(), "set model.waning_immunity: true to use it"),
         (ps.vaccination_specs(), "set model.vaccination: true to use it"),
         (ps.outcome_specs("deaths"), "set model.outcome: deaths to use it"),
-        (ps.outcome_specs("hospitalization"),
-         "set model.outcome: hospitalization to use it"),
+        (
+            ps.outcome_specs("hospitalization"),
+            "set model.outcome: hospitalization to use it",
+        ),
         (ps.seir_specs(), "it needs model.type SEIR or SEIAR"),
         (ps.seiar_specs(), "it needs model.type SEIAR"),
     ]
@@ -435,9 +438,7 @@ def _validate_ic_compartments(
         errors.append(f"{message}. Compartments: {listing}")
 
 
-def _rate_problem(
-    rate: Any, parameter_names: set, compartments: set
-) -> Optional[str]:
+def _rate_problem(rate: Any, parameter_names: set, compartments: set) -> Optional[str]:
     """Explain why a transition rate cannot be evaluated, or return None.
 
     A rate is a number, a parameter name, or an arithmetic expression over
@@ -465,8 +466,10 @@ def _rate_problem(
         message = f"{rate!r} is not a defined parameter"
     else:
         listed = ", ".join(repr(m) for m in missing)
-        verb = "is not a defined parameter" if len(missing) == 1 else (
-            "are not defined parameters"
+        verb = (
+            "is not a defined parameter"
+            if len(missing) == 1
+            else ("are not defined parameters")
         )
         message = f"{rate!r} uses {listed}, which {verb}"
     if set(missing) & compartments:
@@ -673,7 +676,8 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
         # Parameters are defined by the parameters section and, in a
         # calibration config, by the priors; overrides only refer to them.
         defined = {
-            name for section, name, _, _ in uses
+            name
+            for section, name, _, _ in uses
             if section in ("parameters", "calibration.priors")
         }
         _validate_custom_references(model_cfg, defined, errors)
