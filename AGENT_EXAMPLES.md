@@ -1,5 +1,7 @@
 # Epydemix — Recipes and Workflow Examples
 
+**Agent Framework v1**
+
 This file contains visualization recipes and end-to-end workflow examples for the epydemix CLI. For the full reference (config format, output structure, CLI commands, custom models, calibration, projections), see [AGENT.md](AGENT.md).
 
 ## Visualization Recipes

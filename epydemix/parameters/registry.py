@@ -145,53 +145,63 @@ class ParameterRegistry:
             if spec.required and spec.name not in params:
                 if spec.default is not None:
                     # Has a default, just warn
-                    warnings.append(ValidationError(
-                        parameter=spec.name,
-                        message=(
-                            f"Required parameter '{spec.name}' not provided, "
-                            f"will use default: {spec.default}"
-                        ),
-                        severity="warning",
-                    ))
+                    warnings.append(
+                        ValidationError(
+                            parameter=spec.name,
+                            message=(
+                                f"Required parameter '{spec.name}' not provided, "
+                                f"will use default: {spec.default}"
+                            ),
+                            severity="warning",
+                        )
+                    )
                 else:
-                    errors.append(ValidationError(
-                        parameter=spec.name,
-                        message=f"Required parameter '{spec.name}' is missing.",
-                        severity="error",
-                    ))
+                    errors.append(
+                        ValidationError(
+                            parameter=spec.name,
+                            message=f"Required parameter '{spec.name}' is missing.",
+                            severity="error",
+                        )
+                    )
 
         # Check values
         for name, value in params.items():
             if name not in self._specs:
-                warnings.append(ValidationError(
-                    parameter=name,
-                    message=(
-                        f"Parameter '{name}' is not in the registry. "
-                        f"It will still be passed to the model."
-                    ),
-                    severity="warning",
-                ))
+                warnings.append(
+                    ValidationError(
+                        parameter=name,
+                        message=(
+                            f"Parameter '{name}' is not in the registry. "
+                            f"It will still be passed to the model."
+                        ),
+                        severity="warning",
+                    )
+                )
                 continue
 
             spec = self._specs[name]
             # Only validate bounds for scalar numeric values
             if isinstance(value, (int, float)):
                 if spec.min is not None and value < spec.min:
-                    errors.append(ValidationError(
-                        parameter=name,
-                        message=(
-                            f"Value {value} is below minimum {spec.min} "
-                            f"for parameter '{name}'."
-                        ),
-                    ))
+                    errors.append(
+                        ValidationError(
+                            parameter=name,
+                            message=(
+                                f"Value {value} is below minimum {spec.min} "
+                                f"for parameter '{name}'."
+                            ),
+                        )
+                    )
                 if spec.max is not None and value > spec.max:
-                    errors.append(ValidationError(
-                        parameter=name,
-                        message=(
-                            f"Value {value} is above maximum {spec.max} "
-                            f"for parameter '{name}'."
-                        ),
-                    ))
+                    errors.append(
+                        ValidationError(
+                            parameter=name,
+                            message=(
+                                f"Value {value} is above maximum {spec.max} "
+                                f"for parameter '{name}'."
+                            ),
+                        )
+                    )
 
         return ValidationResult(
             valid=len(errors) == 0,

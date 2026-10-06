@@ -44,10 +44,10 @@ def save_bundle(
     Returns:
         The manifest dictionary.
     """
+    import sys
+
     from ..calibration.calibration_results import CalibrationResults
     from ..model.simulation_results import SimulationResults
-
-    import sys
 
     path = Path(path)
     if path.exists() and (path / "manifest.json").exists():
@@ -127,6 +127,7 @@ def _save_simulation_bundle(
     if config:
         try:
             import yaml
+
             config_path = path / "config.yaml"
             with open(config_path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False)
@@ -209,12 +210,14 @@ def _save_calibration_bundle(
                 if isinstance(values, np.ndarray) and values.ndim == 1:
                     var_name = _resolve_var_name(key)
                     for t, val in enumerate(values):
-                        traj_rows.append({
-                            "sim_id": sim_id,
-                            "timestep": t,
-                            "variable": var_name,
-                            "value": float(val),
-                        })
+                        traj_rows.append(
+                            {
+                                "sim_id": sim_id,
+                                "timestep": t,
+                                "variable": var_name,
+                                "value": float(val),
+                            }
+                        )
         if traj_rows:
             traj_df = pd.DataFrame(traj_rows)
             traj_path = path / "trajectories.parquet"
@@ -240,11 +243,13 @@ def _save_calibration_bundle(
         for internal_key, values in results.observed_data.items():
             var_name = _resolve_var_name(internal_key)
             for t, val in enumerate(np.asarray(values)):
-                obs_rows.append({
-                    "timestep": t,
-                    "variable": var_name,
-                    "value": float(val),
-                })
+                obs_rows.append(
+                    {
+                        "timestep": t,
+                        "variable": var_name,
+                        "value": float(val),
+                    }
+                )
         if obs_rows:
             obs_df = pd.DataFrame(obs_rows)
             obs_path = path / "observed_data.parquet"
@@ -255,6 +260,7 @@ def _save_calibration_bundle(
     if config:
         try:
             import yaml
+
             with open(path / "config.yaml", "w") as f:
                 yaml.dump(config, f, default_flow_style=False)
         except ImportError:

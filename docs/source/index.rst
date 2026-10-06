@@ -56,6 +56,8 @@ To install Epydemix, use the following command:
 
    pip install epydemix
 
+Add ``pip install epydemix[numba]`` for a JIT-compiled speedup on the stochastic simulation hot path (optional — epydemix runs fine without it, just slower).
+
 Get started
 ----------
 

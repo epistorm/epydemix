@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # Basic package metadata
 name = "epydemix" 
-version = "1.3.0"
+version = "1.3.1"
 description = "A Python package for epidemic modeling, simulation, and calibration"
 authors = [
     { name = "Nicolò Gozzi", email = "nic.gozzi@gmail.com" }, 
@@ -44,6 +44,9 @@ agent = [
     "pyarrow>=12.0",
     "click>=8.0",
     "pyyaml>=6.0",
+]
+numba = [
+    "numba>=0.57.0",
 ]
 
 [project.urls]

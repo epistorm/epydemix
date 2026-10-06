@@ -188,6 +188,7 @@ def test_stochastic_simulation_invalid_initial_conditions(mock_epimodel):
 # Scheduled transition kind
 # ---------------------------------------------------------------------------
 
+
 def test_scheduled_transition_vaccinees_leave_S():
     """Scheduled transition moves individuals from S to V at the dose rate."""
     T = 30
@@ -228,7 +229,9 @@ def test_scheduled_transition_vaccinees_leave_S():
     final_S = median["S_total"].iloc[-1]
 
     # V should have grown substantially (at least 10 days * ~100 doses each)
-    assert final_V > 500, f"Expected V > 500 after 30 days of vaccination, got {final_V}"
+    assert final_V > 500, (
+        f"Expected V > 500 after 30 days of vaccination, got {final_V}"
+    )
     # S should be lower than initial
     assert final_S < pop_size - 10, "S should have decreased due to vaccination"
 
@@ -280,7 +283,7 @@ def test_scheduled_transition_eligible_correction():
     df_no = res_no.get_quantiles_compartments()
     df_with = res_with.get_quantiles_compartments()
 
-    V_no   = df_no[df_no["quantile"] == 0.5]["V_total"].iloc[-1]
+    V_no = df_no[df_no["quantile"] == 0.5]["V_total"].iloc[-1]
     V_with = df_with[df_with["quantile"] == 0.5]["V_total"].iloc[-1]
 
     # Without correction ignores the R pool → more S vaccinated
