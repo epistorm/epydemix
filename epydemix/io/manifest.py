@@ -102,6 +102,10 @@ def build_simulation_manifest(
             "start_date": str(dates[0])[:10] if len(dates) > 0 else None,
             "end_date": str(dates[-1])[:10] if len(dates) > 0 else None,
             "n_timesteps": n_timesteps,
+            # Present whenever the run went through the CLI, which always
+            # resolves a seed. Re-running the stored config reproduces these
+            # exact realizations.
+            "seed": (config or {}).get("simulation", {}).get("seed"),
         },
         "parameters_used": _scalar_params(results.parameters),
         "files": {

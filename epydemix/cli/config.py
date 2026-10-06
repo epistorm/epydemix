@@ -1,7 +1,10 @@
 """Load and validate YAML/JSON configs, build EpiModel instances from them."""
 
+import ast
 import copy
+import difflib
 import json
+import os
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -173,6 +176,379 @@ def _check_ic_normalization(ic_cfg: Dict[str, Any], tol: float = 1e-4) -> List[s
     return errors
 
 
+def _validate_seed(sim_cfg: Dict[str, Any], errors: list) -> None:
+    """Check an optional ``simulation.seed``. Booleans are ints in Python."""
+    seed = sim_cfg.get("seed")
+    if seed is None:
+        return
+    if not isinstance(seed, int) or isinstance(seed, bool):
+        errors.append("simulation.seed must be an integer")
+    elif seed < 0:
+        errors.append("simulation.seed must be non-negative")
+
+
+# The runtime infers the output frequency from the simulation dates, which
+# needs at least three of them ("Need at least 3 dates to infer frequency").
+_MIN_SIMULATION_STEPS = 3
+
+# Placeholder for a parameter reference that carries no value (a prior).
+_NO_VALUE = object()
+
+
+def _is_number(value: Any) -> bool:
+    """True for int and float values. Booleans are ints in Python; excluded."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _validate_simulation_window(sim_cfg: Dict[str, Any], errors: list) -> None:
+    """Check the simulation dates, time step and replicate count.
+
+    Each of these otherwise surfaces only once a run is under way, and some
+    surface as unhelpful internals: an inverted date range fails as an
+    unsigned-integer overflow.
+    """
+    import datetime
+
+    import pandas as pd
+
+    from ..utils.utils import compute_simulation_dates
+
+    dates = {}
+    for key in ("start_date", "end_date"):
+        raw = sim_cfg.get(key)
+        if raw is None:
+            continue  # a missing date is reported by the caller
+        if not isinstance(raw, (str, datetime.date)):
+            errors.append(
+                f"simulation.{key} must be a date written as YYYY-MM-DD, got {raw!r}"
+            )
+            continue
+        try:
+            stamp = pd.Timestamp(raw)
+        except (ValueError, TypeError):
+            stamp = pd.NaT
+        if pd.isna(stamp):
+            errors.append(
+                f"simulation.{key} {raw!r} is not a valid date; write it as YYYY-MM-DD"
+            )
+        else:
+            dates[key] = stamp
+
+    dt = sim_cfg.get("dt", 1.0)
+    dt_ok = _is_number(dt) and dt > 0
+    if not dt_ok:
+        errors.append(f"simulation.dt must be a positive number of days, got {dt!r}")
+
+    n_sims = sim_cfg.get("n_simulations")
+    if n_sims is not None and not (
+        isinstance(n_sims, int) and not isinstance(n_sims, bool) and n_sims >= 1
+    ):
+        errors.append(
+            f"simulation.n_simulations must be a positive integer, got {n_sims!r}"
+        )
+
+    if len(dates) == 2:
+        start, end = dates["start_date"], dates["end_date"]
+        if end <= start:
+            errors.append(
+                f"simulation.end_date ({end.date()}) must be after "
+                f"simulation.start_date ({start.date()})"
+            )
+        elif dt_ok:
+            n_steps = len(compute_simulation_dates(start, end, dt=dt))
+            if n_steps < _MIN_SIMULATION_STEPS:
+                errors.append(
+                    f"the simulation window gives {n_steps} time steps at "
+                    f"dt={dt}; at least {_MIN_SIMULATION_STEPS} are needed. "
+                    "Move end_date later or reduce dt."
+                )
+
+
+def _numeric_leaves(value: Any) -> Optional[List[float]]:
+    """Return the numbers in a parameter value, or None if it is malformed.
+
+    The accepted shapes mirror what the model accepts at run time: a scalar, a
+    list of numbers (time-varying), or a list of lists (time x group).
+    """
+    if _is_number(value):
+        return [value]
+    if isinstance(value, list) and value:
+        if all(_is_number(x) for x in value):
+            return list(value)
+        if all(
+            isinstance(row, list) and row and all(_is_number(x) for x in row)
+            for row in value
+        ):
+            return [x for row in value for x in row]
+    return None
+
+
+def _parameter_value_problem(value: Any) -> Optional[str]:
+    """Explain why a parameter value cannot be used, or return None if it can."""
+    if _numeric_leaves(value) is not None:
+        return None
+    if isinstance(value, str):
+        try:
+            number = float(value)
+        except ValueError:
+            return f"is the text {value!r}, not a number"
+        mantissa = value.lower().split("e")[0]
+        if "e" in value.lower() and "." not in mantissa:
+            # PyYAML follows YAML 1.1: 3e-1 is a string, 3.0e-1 is a float.
+            return (
+                f"is the text {value!r}, not a number: YAML reads exponent "
+                "notation as a number only when the mantissa has a decimal "
+                f"point. Write {number!r} or "
+                f"{value.lower().replace('e', '.0e', 1)}"
+            )
+        return f"is the quoted text {value!r}; remove the quotes"
+    if value is None:
+        return "has no value"
+    return (
+        "must be a number, a non-empty list of numbers (time-varying), or a "
+        f"list of lists of numbers (time x group); got {value!r}"
+    )
+
+
+def _parameter_uses(config: Dict[str, Any], params: Dict[str, Any]) -> list:
+    """Every place a config names a model parameter.
+
+    Returns ``(section, name, value, value_label)`` tuples. ``value`` is
+    ``_NO_VALUE`` for references that carry none, such as calibration priors.
+    """
+    uses = [
+        ("parameters", name, value, f"parameters.{name}")
+        for name, value in params.items()
+    ]
+    priors = (config.get("calibration") or {}).get("priors")
+    if isinstance(priors, dict):
+        uses += [("calibration.priors", name, _NO_VALUE, None) for name in priors]
+    for i, ovr in enumerate(config.get("overrides") or []):
+        if isinstance(ovr, dict) and "parameter" in ovr:
+            uses.append(
+                (
+                    f"overrides[{i}].parameter",
+                    ovr["parameter"],
+                    ovr.get("value", _NO_VALUE),
+                    f"overrides[{i}].value",
+                )
+            )
+    return uses
+
+
+def _inactive_parameter_hint(name: str) -> Optional[str]:
+    """Name the model setting that would activate a known parameter.
+
+    ``load_predefined_model`` accepts every backbone's and module's parameters
+    and silently ignores those the chosen model does not use, so e.g.
+    ``vaccine_efficacy`` without ``model.vaccination: true`` runs without
+    vaccinating anyone.
+    """
+    from ..parameters import predefined_specs as ps
+
+    owners = [
+        (ps.waning_immunity_specs(), "set model.waning_immunity: true to use it"),
+        (ps.vaccination_specs(), "set model.vaccination: true to use it"),
+        (ps.outcome_specs("deaths"), "set model.outcome: deaths to use it"),
+        (
+            ps.outcome_specs("hospitalization"),
+            "set model.outcome: hospitalization to use it",
+        ),
+        (ps.seir_specs(), "it needs model.type SEIR or SEIAR"),
+        (ps.seiar_specs(), "it needs model.type SEIAR"),
+    ]
+    for specs, hint in owners:
+        if name in {spec.name for spec in specs}:
+            return hint
+    return None
+
+
+def _build_predefined(model_type: str, model_cfg: Dict[str, Any]) -> Optional[EpiModel]:
+    """Build the predefined model a config describes, without its parameters.
+
+    It is built with the config's own backbone and module flags, so its
+    registry and compartments are exactly those the run will use. Returns
+    None when the module combination is invalid, which is reported separately.
+    """
+    module_kwargs = {k: model_cfg[k] for k in _MODEL_MODULE_FIELDS if k in model_cfg}
+    try:
+        return load_predefined_model(model_type, **module_kwargs)
+    except (ValueError, TypeError):
+        return None
+
+
+def _validate_predefined_parameters(registry, uses: list, errors: list) -> None:
+    """Check parameter names and values against the model's registry."""
+    known = registry.names
+    for section, name, value, value_label in uses:
+        if name not in registry:
+            hint = _inactive_parameter_hint(name)
+            if hint is None:
+                close = difflib.get_close_matches(str(name), known, n=1)
+                hint = f"did you mean '{close[0]}'?" if close else None
+            message = f"{section}: '{name}' is not a parameter of this model"
+            if hint:
+                message += f" ({hint})"
+            errors.append(f"{message}. Parameters: {', '.join(known)}")
+            continue
+
+        numbers = _numeric_leaves(value) if value is not _NO_VALUE else None
+        if not numbers:
+            continue  # absent, or malformed and reported elsewhere
+        spec = registry.get(name)
+        units = f" ({spec.units})" if spec.units else ""
+        low, high = min(numbers), max(numbers)
+        if spec.min is not None and low < spec.min:
+            errors.append(
+                f"{value_label} has value {low}, below the minimum of "
+                f"{spec.min}{units} for '{name}'"
+            )
+        if spec.max is not None and high > spec.max:
+            errors.append(
+                f"{value_label} has value {high}, above the maximum of "
+                f"{spec.max}{units} for '{name}'"
+            )
+
+
+def _validate_ic_compartments(
+    ic_cfg: Dict[str, Any], compartments: list, predefined: bool, errors: list
+) -> None:
+    """Every initial-condition key must name a compartment of the model.
+
+    ``build_initial_conditions`` skips names it cannot resolve. One unresolved
+    name drops that compartment's value, so a typo in the infected compartment
+    starts the run with nobody infected; if no name resolves, the whole block
+    is replaced by defaults. Both used to run without complaint.
+    """
+    listing = ", ".join(compartments)
+    for name in ic_cfg:
+        if _resolve_compartment(str(name), compartments) is not None:
+            continue
+        prefix = [c for c in compartments if c.lower().startswith(str(name).lower())]
+        close = prefix or difflib.get_close_matches(str(name), compartments, n=1)
+        message = (
+            f"initial_conditions: '{name}' is not a compartment of this model, "
+            "so its value would be ignored"
+        )
+        if predefined and len(str(name)) <= 2:
+            message += " (predefined models use full compartment names"
+            message += f", e.g. '{close[0]}')" if close else ")"
+        elif close:
+            message += f" (did you mean '{close[0]}'?)"
+        errors.append(f"{message}. Compartments: {listing}")
+
+
+def _rate_problem(rate: Any, parameter_names: set, compartments: set) -> Optional[str]:
+    """Explain why a transition rate cannot be evaluated, or return None.
+
+    A rate is a number, a parameter name, or an arithmetic expression over
+    parameters. It is evaluated with only the parameters in scope, so a
+    compartment name inside a rate is an error too.
+    """
+    if _is_number(rate):
+        return None
+    if not isinstance(rate, str):
+        return (
+            "must be a number, a parameter name, or an arithmetic expression "
+            f"over parameters; got {rate!r}"
+        )
+    if rate in parameter_names:
+        return None
+    try:
+        tree = ast.parse(rate, mode="eval")
+    except SyntaxError:
+        return f"{rate!r} is not a valid expression"
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    missing = sorted(names - parameter_names)
+    if not missing:
+        return None
+    if missing == [rate]:
+        message = f"{rate!r} is not a defined parameter"
+    else:
+        listed = ", ".join(repr(m) for m in missing)
+        verb = (
+            "is not a defined parameter"
+            if len(missing) == 1
+            else ("are not defined parameters")
+        )
+        message = f"{rate!r} uses {listed}, which {verb}"
+    if set(missing) & compartments:
+        message += " (a rate can use parameters only, not compartments)"
+    defined = ", ".join(sorted(parameter_names)) or "none"
+    return f"{message}. Defined parameters: {defined}"
+
+
+def _validate_custom_references(
+    model_cfg: Dict[str, Any], parameter_names: set, errors: list
+) -> None:
+    """Check that transitions refer only to declared compartments and parameters."""
+    compartments = model_cfg.get("compartments")
+    transitions = model_cfg.get("transitions")
+    if not isinstance(compartments, list) or not isinstance(transitions, list):
+        return
+    declared = set(compartments)
+    listing = ", ".join(str(c) for c in compartments)
+
+    for i, tr in enumerate(transitions):
+        if not isinstance(tr, dict):
+            errors.append(f"transitions[{i}] must be a mapping")
+            continue
+        for end in ("source", "target"):
+            name = tr.get(end)
+            if name is None:
+                errors.append(f"transitions[{i}]: '{end}' is required")
+            elif name not in declared:
+                errors.append(
+                    f"transitions[{i}].{end} '{name}' is not a declared "
+                    f"compartment. Compartments: {listing}"
+                )
+
+        kind, params = tr.get("kind"), tr.get("params")
+        if kind == "spontaneous" and params is not None:
+            problem = _rate_problem(params, parameter_names, declared)
+            if problem:
+                errors.append(f"transitions[{i}].params {problem}")
+        elif kind == "mediated" and params is not None:
+            if not (isinstance(params, (list, tuple)) and len(params) == 2):
+                errors.append(
+                    f"transitions[{i}].params must be [rate, infecting "
+                    f"compartment] for a mediated transition; got {params!r}"
+                )
+                continue
+            problem = _rate_problem(params[0], parameter_names, declared)
+            if problem:
+                errors.append(f"transitions[{i}].params[0] {problem}")
+            if params[1] not in declared:
+                errors.append(
+                    f"transitions[{i}].params[1] '{params[1]}' is not a "
+                    f"declared compartment. Compartments: {listing}"
+                )
+        elif kind == "scheduled":
+            for name in tr.get("eligible") or []:
+                if name not in declared:
+                    errors.append(
+                        f"transitions[{i}].eligible '{name}' is not a declared "
+                        f"compartment. Compartments: {listing}"
+                    )
+
+
+def resolve_seed(sim_cfg: Dict[str, Any]) -> int:
+    """Return the seed for a run, drawing one if the config does not set it.
+
+    A seed is always resolved and always recorded, rather than being an opt-in
+    the caller has to remember: reproducibility that depends on someone electing
+    to ask for it is not reproducibility.
+    """
+    seed = sim_cfg.get("seed")
+    if seed is None:
+        # 32 bits, not 64: the seed is written to manifest.json, and integers
+        # above 2**53 do not survive a round trip through consumers that parse
+        # JSON numbers as IEEE-754 doubles. A silently altered seed would defeat
+        # the purpose of recording it.
+        seed = int.from_bytes(os.urandom(4), "big")
+    return int(seed)
+
+
 def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Validate a config dict and return structured errors/warnings.
 
@@ -195,6 +571,8 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
             errors.append("simulation.start_date is required")
         if "end_date" not in sim:
             errors.append("simulation.end_date is required")
+        _validate_seed(sim, errors)
+        _validate_simulation_window(sim, errors)
 
     # Model section validation
     model_cfg = config.get("model", {})
@@ -239,7 +617,9 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
             errors.append("Custom model requires 'model.transitions'")
         else:
             _BUILTIN_KINDS = {"spontaneous", "mediated", "scheduled"}
-            for i, tr in enumerate(model_cfg.get("transitions", [])):
+            for i, tr in enumerate(model_cfg.get("transitions") or []):
+                if not isinstance(tr, dict):
+                    continue  # reported by _validate_custom_references
                 kind = tr.get("kind")
                 if kind == "scheduled" and "schedule" not in tr:
                     errors.append(
@@ -262,8 +642,52 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
                     )
 
     # Parameters section
+    params = config.get("parameters", {})
     if "parameters" not in config:
         warnings.append("No 'parameters' section — will use model defaults")
+    elif not isinstance(params, dict):
+        errors.append("'parameters' must be a mapping of parameter name to value")
+        params = {}
+
+    uses = _parameter_uses(config, params)
+    for _, name, value, value_label in uses:
+        if value is _NO_VALUE:
+            continue
+        problem = _parameter_value_problem(value)
+        if problem:
+            errors.append(f"{value_label} {problem}")
+
+    compartments = None
+    if model_type in SUPPORTED_MODELS:
+        model = _build_predefined(model_type, model_cfg)
+        if model is not None:
+            compartments = list(model.compartments)
+            _validate_predefined_parameters(model.parameter_registry, uses, errors)
+    elif isinstance(model_cfg.get("compartments"), list):
+        compartments = model_cfg["compartments"]
+
+    ic_cfg = config.get("initial_conditions")
+    if isinstance(ic_cfg, dict) and compartments is not None:
+        _validate_ic_compartments(
+            ic_cfg, compartments, model_type in SUPPORTED_MODELS, errors
+        )
+
+    if model_type == "custom":
+        # Parameters are defined by the parameters section and, in a
+        # calibration config, by the priors; overrides only refer to them.
+        defined = {
+            name
+            for section, name, _, _ in uses
+            if section in ("parameters", "calibration.priors")
+        }
+        _validate_custom_references(model_cfg, defined, errors)
+        for section, name, _, _ in uses:
+            if section.startswith("overrides") and name not in defined:
+                errors.append(
+                    f"{section}: '{name}' is not a defined parameter, so the "
+                    "override would have no effect. Defined parameters: "
+                    f"{', '.join(sorted(defined)) or 'none'}"
+                )
 
     # Initial conditions
     if "initial_conditions" not in config:
@@ -610,12 +1034,20 @@ def run_from_config(
 
     ic = build_initial_conditions(config, model)
 
+    # Resolve a seed even when the config omits one, and write it back into the
+    # config that gets stored in the bundle, so the stored config re-runs to the
+    # same realizations rather than merely the same setup.
+    seed = resolve_seed(sim_cfg)
+    config = copy.deepcopy(config)
+    config.setdefault("simulation", {})["seed"] = seed
+
     results = model.run_simulations(
         start_date=sim_cfg["start_date"],
         end_date=sim_cfg["end_date"],
         Nsim=sim_cfg.get("n_simulations", DEFAULT_N_SIMULATIONS),
         dt=sim_cfg.get("dt", 1.0),
         initial_conditions_dict=ic,
+        rng=np.random.default_rng(seed),
     )
 
     return results, config
@@ -1026,6 +1458,8 @@ def validate_projection_config(
             errors.append("simulation.start_date is required")
         if "end_date" not in sim:
             errors.append("simulation.end_date is required")
+        _validate_seed(sim, errors)
+        _validate_simulation_window(sim, errors)
 
     # Must have model section
     if "model" not in config:
@@ -1111,11 +1545,18 @@ def project_from_config(
     # --- sample and simulate ----------------------------------------------
     from ..model.simulation_results import SimulationResults
 
+    # One generator drives both the posterior draw and the trajectories, so a
+    # projection is reproducible end to end from the recorded seed.
+    seed = resolve_seed(sim_cfg)
+    rng = np.random.default_rng(seed)
+    config = copy.deepcopy(config)
+    config.setdefault("simulation", {})["seed"] = seed
+
     all_trajectories = []
     posterior_arr = posterior_df.values  # (n_particles, n_params)
 
     for _ in range(n_simulations):
-        idx = np.random.choice(len(posterior_arr), p=w)
+        idx = rng.choice(len(posterior_arr), p=w)
         sampled_params = dict(zip(param_names, posterior_arr[idx]))
 
         # Update model parameters
@@ -1128,6 +1569,7 @@ def project_from_config(
             end_date=sim_cfg["end_date"],
             dt=sim_cfg.get("dt", 1.0),
             initial_conditions_dict=ic,
+            rng=rng,
         )
         all_trajectories.append(traj)
 

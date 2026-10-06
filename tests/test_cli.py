@@ -1,9 +1,11 @@
 """Tests for the CLI (Click commands) and config loader."""
 
+import copy
 import json
 import os
 
 import numpy as np
+import pandas as pd
 import pytest
 from click.testing import CliRunner
 
@@ -12,7 +14,9 @@ from epydemix.cli.config import (
     build_initial_conditions,
     build_model_from_config,
     load_config,
+    validate_calibration_config,
     validate_config,
+    validate_projection_config,
 )
 from epydemix.cli.main import cli
 from epydemix.io.bundle import save_bundle
@@ -151,6 +155,504 @@ class TestValidateConfig:
         result = validate_config(cfg)
         assert result["valid"] is True
         assert len(result["warnings"]) > 0
+
+
+def _with(base, **sections):
+    """Return a deep copy of ``base`` with top-level sections replaced."""
+    cfg = copy.deepcopy(base)
+    cfg.update(copy.deepcopy(sections))
+    return cfg
+
+
+def _errors(result):
+    return " | ".join(result["errors"])
+
+
+CUSTOM_CONFIG = {
+    "model": {
+        "type": "custom",
+        "compartments": ["S", "I", "R"],
+        "transitions": [
+            {"source": "S", "target": "I", "kind": "mediated", "params": ["beta", "I"]},
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": "gamma"},
+        ],
+    },
+    "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-30"},
+    "parameters": {"beta": 0.3, "gamma": 0.1},
+}
+
+
+class TestValidateSimulationWindow:
+    """Dates, time step and replicate count are checked before any run."""
+
+    @pytest.mark.parametrize(
+        "start,end",
+        [
+            ("2023-06-01", "2023-01-01"),  # inverted
+            ("2023-01-01", "2023-01-01"),  # empty
+        ],
+    )
+    def test_end_must_follow_start(self, start, end):
+        cfg = _with(MINIMAL_CONFIG, simulation={"start_date": start, "end_date": end})
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "must be after" in _errors(result)
+
+    @pytest.mark.parametrize("bad", ["next tuesday", "2023-13-45", 20230101])
+    def test_unparseable_date(self, bad):
+        cfg = _with(
+            MINIMAL_CONFIG, simulation={"start_date": bad, "end_date": "2023-01-30"}
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "start_date" in _errors(result)
+
+    def test_yaml_date_objects_are_accepted(self):
+        import datetime
+
+        cfg = _with(
+            MINIMAL_CONFIG,
+            simulation={
+                "start_date": datetime.date(2023, 1, 1),
+                "end_date": datetime.date(2023, 1, 30),
+            },
+        )
+        assert validate_config(cfg)["valid"]
+
+    def test_window_too_short_for_step(self):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            simulation={"start_date": "2023-01-01", "end_date": "2023-01-02"},
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "time steps" in _errors(result)
+
+    def test_short_window_is_fine_with_smaller_step(self):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            simulation={
+                "start_date": "2023-01-01",
+                "end_date": "2023-01-02",
+                "dt": 0.5,
+            },
+        )
+        assert validate_config(cfg)["valid"]
+
+    @pytest.mark.parametrize("bad", [0, -3, 2.5, True])
+    def test_n_simulations_must_be_positive_integer(self, bad):
+        cfg = copy.deepcopy(MINIMAL_CONFIG)
+        cfg["simulation"]["n_simulations"] = bad
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "n_simulations" in _errors(result)
+
+    @pytest.mark.parametrize("bad", [0, -1, "1"])
+    def test_dt_must_be_positive(self, bad):
+        cfg = copy.deepcopy(MINIMAL_CONFIG)
+        cfg["simulation"]["dt"] = bad
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "dt" in _errors(result)
+
+    def test_projection_validator_checks_dates_too(self, tmp_path):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            simulation={"start_date": "2023-06-01", "end_date": "2023-01-01"},
+        )
+        result = validate_projection_config(cfg, str(tmp_path))
+        assert "must be after" in _errors(result)
+
+
+class TestValidateParameterValues:
+    """Parameter values must be numbers or lists of numbers, for any model."""
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            0.3,
+            3,
+            [0.3, 0.2, 0.1],
+            [[0.3, 0.2], [0.1, 0.1]],
+        ],
+    )
+    def test_accepted_shapes(self, value):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            parameters={"transmission_rate": value, "recovery_rate": 0.1},
+        )
+        assert validate_config(cfg)["valid"], _errors(validate_config(cfg))
+
+    @pytest.mark.parametrize(
+        "value,fragment",
+        [
+            ("fast", "not a number"),
+            ("3e-1", "decimal point"),  # PyYAML reads this as a string
+            ("0.3", "remove the quotes"),
+            (None, "no value"),
+            (True, "must be a number"),
+            ([], "must be a number"),
+            ([0.3, "x"], "must be a number"),
+            ({"a": 1}, "must be a number"),
+        ],
+    )
+    def test_rejected_values(self, value, fragment):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            parameters={"transmission_rate": value, "recovery_rate": 0.1},
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert fragment in _errors(result)
+
+    def test_yaml_exponent_is_caught_from_file(self, tmp_path):
+        # The end-to-end case: an agent writes 3e-1 in YAML.
+        path = tmp_path / "cfg.yaml"
+        path.write_text(
+            "model: {type: SIR}\n"
+            "simulation: {start_date: '2023-01-01', end_date: '2023-01-30'}\n"
+            "parameters: {transmission_rate: 3e-1, recovery_rate: 0.1}\n"
+        )
+        result = validate_config(load_config(str(path)))
+        assert not result["valid"]
+        assert "3.0e-1" in _errors(result)
+
+    def test_parameters_must_be_a_mapping(self):
+        cfg = _with(MINIMAL_CONFIG, parameters=[0.3, 0.1])
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "mapping" in _errors(result)
+
+
+class TestValidatePredefinedParameters:
+    """Names and ranges come from the model's own parameter registry."""
+
+    @pytest.mark.parametrize(
+        "name,value,fragment",
+        [
+            ("recovery_rate", 50, "above the maximum"),
+            ("transmission_rate", -2, "below the minimum"),
+            ("transmission_rate", [0.3, 12.0], "above the maximum"),
+        ],
+    )
+    def test_out_of_range(self, name, value, fragment):
+        params = {"transmission_rate": 0.3, "recovery_rate": 0.1, name: value}
+        result = validate_config(_with(MINIMAL_CONFIG, parameters=params))
+        assert not result["valid"]
+        assert fragment in _errors(result)
+
+    def test_misspelled_name_gets_a_suggestion(self):
+        params = {"transmision_rate": 0.3, "recovery_rate": 0.1}
+        result = validate_config(_with(MINIMAL_CONFIG, parameters=params))
+        assert not result["valid"]
+        assert "did you mean 'transmission_rate'" in _errors(result)
+
+    @pytest.mark.parametrize(
+        "name,hint",
+        [
+            ("vaccine_efficacy", "model.vaccination: true"),
+            ("waning_rate", "model.waning_immunity: true"),
+            ("mortality_rate", "model.outcome: deaths"),
+            ("hospitalization_rate", "model.outcome: hospitalization"),
+            ("incubation_rate", "SEIR or SEIAR"),
+            ("asymptomatic_fraction", "SEIAR"),
+        ],
+    )
+    def test_inactive_parameters_are_rejected_with_a_hint(self, name, hint):
+        # The model would accept and silently ignore these.
+        params = {"transmission_rate": 0.3, "recovery_rate": 0.1, name: 0.5}
+        result = validate_config(_with(MINIMAL_CONFIG, parameters=params))
+        assert not result["valid"]
+        assert hint in _errors(result)
+
+    def test_module_parameter_with_module_enabled(self):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            model={"type": "SIR", "vaccination": True},
+            parameters={
+                "transmission_rate": 0.3,
+                "recovery_rate": 0.1,
+                "vaccine_efficacy": 0.8,
+            },
+        )
+        assert validate_config(cfg)["valid"], _errors(validate_config(cfg))
+
+    def test_override_on_unknown_parameter(self):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            overrides=[
+                {
+                    "parameter": "transmision_rate",
+                    "start_date": "2023-01-10",
+                    "end_date": "2023-01-20",
+                    "value": 0.1,
+                }
+            ],
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "overrides[0].parameter" in _errors(result)
+
+    def test_override_value_out_of_range(self):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            overrides=[
+                {
+                    "parameter": "transmission_rate",
+                    "start_date": "2023-01-10",
+                    "end_date": "2023-01-20",
+                    "value": 99,
+                }
+            ],
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "overrides[0].value" in _errors(result)
+
+    def test_valid_override(self):
+        cfg = _with(
+            MINIMAL_CONFIG,
+            overrides=[
+                {
+                    "parameter": "transmission_rate",
+                    "start_date": "2023-01-10",
+                    "end_date": "2023-01-20",
+                    "value": 0.05,
+                }
+            ],
+        )
+        assert validate_config(cfg)["valid"], _errors(validate_config(cfg))
+
+    def _calibration(self, prior_name):
+        cfg = copy.deepcopy(MINIMAL_CONFIG)
+        cfg["parameters"] = {"recovery_rate": 0.1}
+        cfg["calibration"] = {
+            "observed_data": "observed.csv",
+            "priors": {prior_name: {"distribution": "uniform", "min": 0.1, "max": 0.8}},
+        }
+        return cfg
+
+    def test_prior_on_real_parameter(self):
+        result = validate_calibration_config(self._calibration("transmission_rate"))
+        assert result["valid"], _errors(result)
+
+    def test_prior_on_misspelled_parameter(self):
+        result = validate_calibration_config(self._calibration("transmision_rate"))
+        assert not result["valid"]
+        assert "calibration.priors" in _errors(result)
+
+
+class TestValidateCustomReferences:
+    """Custom transitions may only refer to declared compartments and parameters."""
+
+    def _transitions(self, *transitions, **extra):
+        cfg = copy.deepcopy(CUSTOM_CONFIG)
+        cfg["model"]["transitions"] = list(transitions)
+        cfg.update(extra)
+        return cfg
+
+    def test_reference_config_is_valid(self):
+        assert validate_config(CUSTOM_CONFIG)["valid"], _errors(
+            validate_config(CUSTOM_CONFIG)
+        )
+
+    def test_undeclared_target(self):
+        cfg = self._transitions(
+            {"source": "S", "target": "X", "kind": "spontaneous", "params": "gamma"}
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "transitions[0].target 'X'" in _errors(result)
+
+    def test_missing_source(self):
+        cfg = self._transitions(
+            {"target": "R", "kind": "spontaneous", "params": "gamma"}
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "'source' is required" in _errors(result)
+
+    def test_undeclared_infecting_compartment(self):
+        cfg = self._transitions(
+            {"source": "S", "target": "I", "kind": "mediated", "params": ["beta", "Q"]}
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "params[1] 'Q'" in _errors(result)
+
+    @pytest.mark.parametrize("params", [["beta"], "beta", ["beta", "I", "R"]])
+    def test_mediated_params_shape(self, params):
+        cfg = self._transitions(
+            {"source": "S", "target": "I", "kind": "mediated", "params": params}
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "[rate, infecting compartment]" in _errors(result)
+
+    def test_undefined_rate_parameter(self):
+        cfg = self._transitions(
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": "delta"}
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "'delta' is not a defined parameter" in _errors(result)
+
+    @pytest.mark.parametrize("rate", ["beta * gamma", "beta / (1 + gamma)", 0.25])
+    def test_valid_rates(self, rate):
+        cfg = self._transitions(
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": rate}
+        )
+        assert validate_config(cfg)["valid"], _errors(validate_config(cfg))
+
+    def test_expression_with_undefined_name(self):
+        cfg = self._transitions(
+            {
+                "source": "I",
+                "target": "R",
+                "kind": "spontaneous",
+                "params": "beta * gama",
+            }
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "'gama'" in _errors(result)
+
+    def test_compartment_inside_a_rate(self):
+        cfg = self._transitions(
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": "gamma * I"}
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "not compartments" in _errors(result)
+
+    def test_malformed_expression(self):
+        cfg = self._transitions(
+            {"source": "I", "target": "R", "kind": "spontaneous", "params": "gamma *"}
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "not a valid expression" in _errors(result)
+
+    def test_prior_defines_a_parameter(self):
+        cfg = copy.deepcopy(CUSTOM_CONFIG)
+        cfg["parameters"] = {"gamma": 0.1}
+        cfg["calibration"] = {
+            "observed_data": "observed.csv",
+            "priors": {"beta": {"distribution": "uniform", "min": 0.1, "max": 0.8}},
+        }
+        result = validate_calibration_config(cfg)
+        assert result["valid"], _errors(result)
+
+    def test_override_on_undefined_parameter(self):
+        cfg = copy.deepcopy(CUSTOM_CONFIG)
+        cfg["overrides"] = [
+            {
+                "parameter": "bta",
+                "start_date": "2023-01-10",
+                "end_date": "2023-01-20",
+                "value": 0.1,
+            }
+        ]
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "no effect" in _errors(result)
+
+    def test_non_mapping_transition_is_reported_not_raised(self):
+        cfg = self._transitions("S -> I")
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "transitions[0] must be a mapping" in _errors(result)
+
+    def test_scheduled_eligible_must_be_declared(self):
+        cfg = self._transitions(
+            {
+                "source": "S",
+                "target": "R",
+                "kind": "scheduled",
+                "schedule": [0, 0, 0],
+                "eligible": ["S", "V"],
+            }
+        )
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "eligible 'V'" in _errors(result)
+
+
+class TestValidateInitialConditionNames:
+    """An unresolvable initial-condition key used to be silently dropped."""
+
+    def _ic(self, ic, model=None):
+        cfg = copy.deepcopy(MINIMAL_CONFIG)
+        if model:
+            cfg["model"] = model
+        cfg["initial_conditions"] = ic
+        return validate_config(cfg)
+
+    def test_short_names_on_predefined_model(self):
+        result = self._ic({"S": 0.99, "I": 0.01, "R": 0.0})
+        assert not result["valid"]
+        assert "full compartment names" in _errors(result)
+        assert "'Susceptible'" in _errors(result)
+
+    def test_typo_gets_a_suggestion(self):
+        # Previously ran with nobody infected and 1% of the population missing.
+        result = self._ic({"Susceptible": 0.99, "Infectd": 0.01, "Recovered": 0.0})
+        assert not result["valid"]
+        assert "did you mean 'Infected'" in _errors(result)
+
+    def test_case_insensitive_names_are_accepted(self):
+        # The runtime resolves these, so the validator must too.
+        result = self._ic({"susceptible": 0.99, "INFECTED": 0.01, "Recovered": 0.0})
+        assert result["valid"], _errors(result)
+
+    def test_module_compartment_with_module_enabled(self):
+        result = self._ic(
+            {
+                "Susceptible": 0.89,
+                "Infected": 0.01,
+                "Recovered": 0.0,
+                "Vaccinated": 0.1,
+            },
+            model={"type": "SIR", "vaccination": True},
+        )
+        assert result["valid"], _errors(result)
+
+    def test_module_compartment_with_module_off(self):
+        result = self._ic(
+            {"Susceptible": 0.89, "Infected": 0.01, "Recovered": 0.0, "Vaccinated": 0.1}
+        )
+        assert not result["valid"]
+        assert "'Vaccinated'" in _errors(result)
+
+    def test_undeclared_custom_compartment(self):
+        cfg = copy.deepcopy(CUSTOM_CONFIG)
+        cfg["initial_conditions"] = {"S": 0.99, "I": 0.01, "X": 0.0}
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert "'X' is not a compartment" in _errors(result)
+
+
+class TestCLIValidateRejectsContent:
+    """The validate and run commands both refuse values that used to slip through."""
+
+    OUT_OF_RANGE = {
+        "model": {"type": "SIR"},
+        "simulation": {"start_date": "2023-01-01", "end_date": "2023-01-30"},
+        "parameters": {"transmission_rate": 0.3, "recovery_rate": 50},
+    }
+
+    def test_validate_exits_nonzero(self, tmp_path):
+        path = _write_yaml(tmp_path, self.OUT_OF_RANGE)
+        result = CliRunner().invoke(cli, ["validate", path])
+        assert result.exit_code == 1
+        assert "above the maximum" in result.output
+
+    def test_run_refuses_before_simulating(self, tmp_path):
+        path = _write_yaml(tmp_path, self.OUT_OF_RANGE)
+        out = tmp_path / "out.epx"
+        result = CliRunner().invoke(cli, ["run", path, "--output", str(out)])
+        assert result.exit_code != 0
+        assert not out.exists()
 
 
 class TestBuildModel:
@@ -476,6 +978,75 @@ class TestCLIRun:
         runner = CliRunner()
         result = runner.invoke(cli, ["run", path])
         assert result.exit_code != 0
+
+
+class TestCLIRunSeed:
+    """A run must always resolve, record and honour an RNG seed."""
+
+    @staticmethod
+    def _run(tmp_path, config, name):
+        config_path = _write_yaml(tmp_path, config, name=f"{name}.yaml")
+        output_path = str(tmp_path / f"{name}.epx")
+        result = CliRunner().invoke(cli, ["run", config_path, "--output", output_path])
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        with open(os.path.join(output_path, "manifest.json")) as fh:
+            return output_path, json.load(fh)
+
+    def test_seed_is_recorded_even_when_not_requested(self, tmp_path):
+        bundle, manifest = self._run(tmp_path, MINIMAL_CONFIG, "auto")
+        seed = manifest["simulation"]["seed"]
+        assert isinstance(seed, int)
+        assert manifest["provenance"]["seed"] == seed
+        # The stored config must carry it too, so the bundle is self-contained.
+        stored = load_config(os.path.join(bundle, "config.yaml"))
+        assert stored["simulation"]["seed"] == seed
+
+    def test_explicit_seed_is_honoured(self, tmp_path):
+        config = copy.deepcopy(MINIMAL_CONFIG)
+        config["simulation"]["seed"] = 12345
+        _, manifest = self._run(tmp_path, config, "explicit")
+        assert manifest["simulation"]["seed"] == 12345
+
+    def test_same_seed_reproduces_trajectories(self, tmp_path):
+        config = copy.deepcopy(MINIMAL_CONFIG)
+        config["simulation"]["seed"] = 999
+        bundle_a, _ = self._run(tmp_path, config, "rep_a")
+        bundle_b, _ = self._run(tmp_path, config, "rep_b")
+        a = pd.read_parquet(os.path.join(bundle_a, "compartments.parquet"))
+        b = pd.read_parquet(os.path.join(bundle_b, "compartments.parquet"))
+        assert a.equals(b)
+
+    def test_unseeded_runs_differ(self, tmp_path):
+        bundle_a, man_a = self._run(tmp_path, MINIMAL_CONFIG, "free_a")
+        bundle_b, man_b = self._run(tmp_path, MINIMAL_CONFIG, "free_b")
+        assert man_a["simulation"]["seed"] != man_b["simulation"]["seed"]
+        a = pd.read_parquet(os.path.join(bundle_a, "compartments.parquet"))
+        b = pd.read_parquet(os.path.join(bundle_b, "compartments.parquet"))
+        assert not a.equals(b)
+
+    def test_rerunning_a_stored_config_reproduces_the_bundle(self, tmp_path):
+        """The property that makes a bundle reproducible, not just descriptive."""
+        original, manifest = self._run(tmp_path, MINIMAL_CONFIG, "orig")
+        replay_out = str(tmp_path / "replay.epx")
+        result = CliRunner().invoke(
+            cli,
+            ["run", os.path.join(original, "config.yaml"), "--output", replay_out],
+        )
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        with open(os.path.join(replay_out, "manifest.json")) as fh:
+            replayed = json.load(fh)
+        assert replayed["simulation"]["seed"] == manifest["simulation"]["seed"]
+        a = pd.read_parquet(os.path.join(original, "compartments.parquet"))
+        b = pd.read_parquet(os.path.join(replay_out, "compartments.parquet"))
+        assert a.equals(b)
+
+    @pytest.mark.parametrize("bad", ["abc", 1.5, True, -1])
+    def test_invalid_seed_is_rejected(self, bad):
+        config = copy.deepcopy(MINIMAL_CONFIG)
+        config["simulation"]["seed"] = bad
+        report = validate_config(config)
+        assert not report["valid"]
+        assert any("seed" in e for e in report["errors"])
 
 
 class TestCLIInspect:

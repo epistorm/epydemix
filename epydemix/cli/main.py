@@ -10,6 +10,7 @@ Usage::
     epydemix defaults
 """
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -35,6 +36,25 @@ def _error_json(code, message, details=None):
         err["details"] = details
     click.echo(json.dumps(err, indent=2), err=True)
     sys.exit(1)
+
+
+def _provenance(command, config_path, used_config):
+    """Build the manifest's provenance block.
+
+    Records the seed alongside the invoking command, and a hash of the resolved
+    config rather than relying on ``config_path`` alone — that path frequently
+    goes stale, while the config itself is stored inside the bundle.
+    """
+    prov = {"command": command}
+    if config_path is not None:
+        prov["config_path"] = str(Path(config_path).resolve())
+    if used_config:
+        blob = json.dumps(used_config, sort_keys=True, cls=NumpySafeEncoder)
+        prov["config_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
+        seed = (used_config.get("simulation") or {}).get("seed")
+        if seed is not None:
+            prov["seed"] = seed
+    return prov
 
 
 # ---------------------------------------------------------------------------
@@ -92,10 +112,7 @@ def run(config_path, output):
     try:
         config_dir = Path(config_path).parent
         results, used_config = run_from_config(config, config_dir=config_dir)
-        prov = {
-            "command": "run",
-            "config_path": str(Path(config_path).resolve()),
-        }
+        prov = _provenance("run", config_path, used_config)
         manifest = save_bundle(results, output, config=used_config, provenance=prov)
         click.echo(f"Bundle saved to: {output}", err=True)
         _print_json(manifest)
@@ -148,10 +165,7 @@ def calibrate(config_path, output):
     try:
         config_dir = Path(config_path).parent
         results, used_config = calibrate_from_config(config, config_dir=config_dir)
-        prov = {
-            "command": "calibrate",
-            "config_path": str(Path(config_path).resolve()),
-        }
+        prov = _provenance("calibrate", config_path, used_config)
         manifest = save_bundle(results, output, config=used_config, provenance=prov)
         click.echo(f"Calibration bundle saved to: {output}", err=True)
         _print_json(manifest)
@@ -270,12 +284,8 @@ def project(calibration_bundle, config_path, output):
         results, used_config = project_from_config(
             config, calibration_bundle, config_dir=proj_config_dir
         )
-        prov = {
-            "command": "project",
-            "parent_bundle": str(Path(calibration_bundle).resolve()),
-        }
-        if config_path is not None:
-            prov["config_path"] = str(Path(config_path).resolve())
+        prov = _provenance("project", config_path, used_config)
+        prov["parent_bundle"] = str(Path(calibration_bundle).resolve())
         manifest = save_bundle(results, output, config=used_config, provenance=prov)
         click.echo(f"Projection bundle saved to: {output}", err=True)
         _print_json(manifest)
