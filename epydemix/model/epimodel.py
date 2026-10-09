@@ -347,6 +347,39 @@ class EpiModel:
         self.compartments_idx = {}
         self.clear_transitions()
 
+    def remove_compartment(self, compartment: str) -> List[Transition]:
+        """
+        Removes a compartment from the model, together with every transition that involves it:
+        transitions leaving it, entering it, and mediated transitions in which it is the agent.
+
+        Transitions of custom kinds that refer to the compartment only through their `params`
+        cannot be detected and must be removed with `remove_transition`.
+
+        Args:
+            compartment (str): The compartment to remove.
+
+        Raises:
+            ValueError: If the compartment is not in the model.
+
+        Returns:
+            List[Transition]: The transitions removed along with the compartment.
+        """
+        if compartment not in self.compartments_idx:
+            raise ValueError(f"Compartment '{compartment}' is not in the model.")
+
+        removed = [
+            tr
+            for tr in self.transitions_list
+            if compartment in (tr.source, tr.target)
+            or self._transition_agent(tr) == compartment
+        ]
+        self._drop_transitions(removed)
+
+        self.compartments.remove(compartment)
+        del self.transitions[compartment]
+        self.compartments_idx = {comp: i for i, comp in enumerate(self.compartments)}
+        return removed
+
     def add_parameter(
         self,
         parameter_name: Optional[str] = None,
@@ -532,6 +565,77 @@ class EpiModel:
         self.transitions_list = []
         self.transitions_idx = {}
         self.transitions = {comp: [] for comp in self.compartments}
+
+    def remove_transition(
+        self,
+        source: str,
+        target: str,
+        kind: Optional[str] = None,
+        agent: Optional[str] = None,
+    ) -> List[Transition]:
+        """
+        Removes the transitions going from `source` to `target`.
+
+        A model can have several transitions between the same two compartments (e.g. infection
+        mediated by two different infectious compartments). By default all of them are removed;
+        use `kind` and/or `agent` to remove only some.
+
+        Args:
+            source (str): The source compartment of the transitions.
+            target (str): The target compartment of the transitions.
+            kind (str, optional): Only remove transitions of this kind (e.g. "mediated").
+            agent (str, optional): Only remove mediated transitions whose agent (the compartment
+                mediating the transition, e.g. "I" in params=("beta", "I")) is this compartment.
+
+        Raises:
+            ValueError: If no transition matches.
+
+        Returns:
+            List[Transition]: The removed transitions.
+        """
+        removed = [
+            tr
+            for tr in self.transitions_list
+            if tr.source == source
+            and tr.target == target
+            and (kind is None or tr.kind == kind)
+            and (agent is None or self._transition_agent(tr) == agent)
+        ]
+        if not removed:
+            filters = "".join(
+                f", {name}='{value}'"
+                for name, value in (("kind", kind), ("agent", agent))
+                if value is not None
+            )
+            raise ValueError(
+                f"No transition found from '{source}' to '{target}'{filters}."
+            )
+
+        self._drop_transitions(removed)
+        return removed
+
+    @staticmethod
+    def _transition_agent(transition: Transition) -> Optional[str]:
+        """Returns the agent compartment of a mediated transition, None for other kinds."""
+        if transition.kind == "mediated":
+            return transition.params[1]
+        return None
+
+    def _drop_transitions(self, to_remove: List[Transition]) -> None:
+        """Removes the given transitions and renumbers `transitions_idx` accordingly."""
+        removed_ids = {id(tr) for tr in to_remove}
+        self.transitions_list = [
+            tr for tr in self.transitions_list if id(tr) not in removed_ids
+        ]
+        for comp in self.transitions:
+            self.transitions[comp] = [
+                tr for tr in self.transitions[comp] if id(tr) not in removed_ids
+            ]
+        # A name stays as long as one transition between the two compartments remains
+        names = dict.fromkeys(
+            f"{tr.source}_to_{tr.target}" for tr in self.transitions_list
+        )
+        self.transitions_idx = {name: i for i, name in enumerate(names)}
 
     def add_intervention(
         self,

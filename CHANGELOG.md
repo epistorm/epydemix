@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+* `EpiModel.remove_transition(source, target, kind=None, agent=None)` removes transitions between two compartments and returns them. A model can have several transitions between the same pair (e.g. `SEIAR`'s `Susceptible → Exposed`, mediated once by `Infected` and once by `Asymptomatic`): by default all are removed, and `kind` and/or `agent` (the mediating compartment) narrow the selection. Raises a `ValueError` if nothing matches.
+* `EpiModel.remove_compartment(compartment)` removes a compartment together with every transition that leaves it, enters it, or is mediated by it, and returns the removed transitions. Remaining compartments and transitions are renumbered. Transitions of custom kinds that refer to the compartment only through their `params` cannot be detected and must be removed explicitly.
+
 ### Changed
 
 * Rates written as expressions (e.g. `"beta * (1 - eff)"`) are now evaluated once per simulation instead of once per time step. Previously `compute_spontaneous_transition_rate` and `compute_mediated_transition_rate` deep-copied all parameter arrays and evaluated the expression for every time step at each step, only to keep one row, so the cost grew with the square of the run length. Results are unchanged: outputs are bit-for-bit identical for the same seed, and each `simulate()` call still evaluates expressions with its own parameters, so calibration is unaffected. The one behavioral difference: a custom transition function (registered via `register_transition_kind`) that modifies `data["parameters"]` in the middle of a run no longer affects expression rates for the rest of that run. The new helper `evaluate_rate_expression` in `epimodel.py` holds this logic; calling the rate functions directly with a `data` dictionary that has no `"expression_cache"` key behaves as before.

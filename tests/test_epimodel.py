@@ -212,6 +212,113 @@ def test_default_initial_conditions_without_mediated_transitions(basic_model):
     assert results.Nsim == 1
 
 
+def _two_strain_free_model():
+    """S -> E driven by two infectious compartments (I and A), as in SEIAR"""
+    model = EpiModel(
+        compartments=["S", "E", "I", "A", "R"],
+        parameters={"beta": 0.3, "r": 0.5, "eps": 0.2, "p": 0.4, "mu": 0.1},
+    )
+    model.add_transition("S", "E", "mediated", ("beta", "I"))
+    model.add_transition("S", "E", "mediated", ("beta * r", "A"))
+    model.add_transition("E", "I", "spontaneous", "eps * (1 - p)")
+    model.add_transition("E", "A", "spontaneous", "eps * p")
+    model.add_transition("I", "R", "spontaneous", "mu")
+    model.add_transition("A", "R", "spontaneous", "mu")
+    return model
+
+
+def test_remove_transition_by_agent():
+    """One of several transitions between the same compartments can be removed"""
+    model = _two_strain_free_model()
+    idx_before = dict(model.transitions_idx)
+
+    removed = model.remove_transition("S", "E", agent="A")
+    assert [tr.params for tr in removed] == [("beta * r", "A")]
+    assert model.n_transitions == 5
+    assert [tr.params for tr in model.transitions["S"]] == [("beta", "I")]
+    # S -> E still exists, so names and indices are unchanged
+    assert model.transitions_idx == idx_before
+
+    results = model.run_simulations(
+        start_date="2020-01-01", end_date="2020-02-01", Nsim=1, rng=1
+    )
+    assert "S_to_E_total" in results.trajectories[0].transitions
+
+
+def test_remove_transition_all_matches():
+    """Without filters every transition between the two compartments is removed"""
+    model = _two_strain_free_model()
+
+    removed = model.remove_transition("S", "E")
+    assert len(removed) == 2
+    assert model.transitions["S"] == []
+    assert model.n_transitions == 4
+    assert model.transitions_idx == {"E_to_I": 0, "E_to_A": 1, "I_to_R": 2, "A_to_R": 3}
+
+    # The remaining transitions still simulate and S_to_E is gone from the output
+    initial_conditions = {
+        "S": model.population.Nk - 100,
+        "E": np.full_like(model.population.Nk, 100),
+    }
+    results = model.run_simulations(
+        start_date="2020-01-01",
+        end_date="2020-02-01",
+        initial_conditions_dict=initial_conditions,
+        Nsim=1,
+        rng=1,
+    )
+    transitions = results.trajectories[0].transitions
+    assert "S_to_E_total" not in transitions
+    assert transitions["E_to_I_total"].sum() + transitions["E_to_A_total"].sum() > 0
+
+
+def test_remove_transition_by_kind_and_errors():
+    model = _two_strain_free_model()
+
+    with pytest.raises(ValueError, match="No transition found from 'S' to 'R'"):
+        model.remove_transition("S", "R")
+    with pytest.raises(ValueError, match="agent='R'"):
+        model.remove_transition("S", "E", agent="R")
+    with pytest.raises(ValueError, match="kind='spontaneous'"):
+        model.remove_transition("S", "E", kind="spontaneous")
+    assert model.n_transitions == 6
+
+    assert len(model.remove_transition("E", "I", kind="spontaneous")) == 1
+    assert model.n_transitions == 5
+
+
+def test_remove_compartment():
+    """Removing a compartment drops its transitions, including those it mediates"""
+    model = _two_strain_free_model()
+
+    removed = model.remove_compartment("A")
+    assert sorted((tr.source, tr.target) for tr in removed) == [
+        ("A", "R"),
+        ("E", "A"),
+        ("S", "E"),
+    ]
+    assert model.compartments == ["S", "E", "I", "R"]
+    assert model.compartments_idx == {"S": 0, "E": 1, "I": 2, "R": 3}
+    assert "A" not in model.transitions
+    assert [tr.params for tr in model.transitions["S"]] == [("beta", "I")]
+    assert model.transitions_idx == {"S_to_E": 0, "E_to_I": 1, "I_to_R": 2}
+
+    with pytest.raises(ValueError, match="'A' is not in the model"):
+        model.remove_compartment("A")
+
+    # Same seed, same results as the model built directly without the compartment
+    reference = EpiModel(
+        compartments=["S", "E", "I", "R"],
+        parameters={"beta": 0.3, "r": 0.5, "eps": 0.2, "p": 0.4, "mu": 0.1},
+    )
+    reference.add_transition("S", "E", "mediated", ("beta", "I"))
+    reference.add_transition("E", "I", "spontaneous", "eps * (1 - p)")
+    reference.add_transition("I", "R", "spontaneous", "mu")
+
+    kwargs = dict(start_date="2020-01-01", end_date="2020-03-01", rng=5)
+    _assert_same_trajectory(simulate(model, **kwargs), simulate(reference, **kwargs))
+
+
 def test_parameter_management(basic_model):
     """Test parameter management"""
     # Test adding single parameter
