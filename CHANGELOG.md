@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+* `EpiModel.clear_transitions()` now also resets `transitions_idx`. Previously the old transition names and indices survived the clear, so adding a different set of transitions afterwards made `run_simulations` fail with `RuntimeError: Simulation failed: index N is out of bounds for axis 1 ...`.
+* `EpiModel.clear_compartments()` now also clears the model's transitions, which referred to the removed compartments.
+* `EpiModel.add_compartments()` now raises a `ValueError` when a compartment is already in the model (or repeated in the same call), instead of silently adding a duplicate that left `compartments` and `compartments_idx` out of sync.
+
+---
+
 ## [1.3.2] - 2026-07-29
 
 ### Changed

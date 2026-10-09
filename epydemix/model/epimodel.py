@@ -292,12 +292,28 @@ class EpiModel:
         Args:
             compartments (list or object): A list of compartments or a single compartment to be added.
 
+        Raises:
+            ValueError: If a compartment is already in the model or is repeated in the input.
+
         Returns:
             None
         """
         # Ensure we are always working with a list, even if a single compartment is passed
         if not isinstance(compartments, (list, tuple)):
             compartments = [compartments]
+
+        # Reject duplicates, which would leave compartments and compartments_idx out of sync
+        duplicates = list(
+            dict.fromkeys(
+                comp
+                for i, comp in enumerate(compartments)
+                if comp in self.compartments_idx or comp in compartments[:i]
+            )
+        )
+        if duplicates:
+            raise ValueError(
+                f"These compartments are already in the model: {', '.join(map(str, duplicates))}"
+            )
 
         # Add compartments to the model
         self.compartments.extend(compartments)
@@ -322,12 +338,14 @@ class EpiModel:
     def clear_compartments(self) -> None:
         """
         This method resets the `compartments` list and clears the `compartments_idx` dictionary.
+        Transitions are cleared as well, since they refer to compartments that no longer exist.
 
         Returns:
             None
         """
         self.compartments = []
         self.compartments_idx = {}
+        self.clear_transitions()
 
     def add_parameter(
         self,
@@ -496,13 +514,15 @@ class EpiModel:
         """
         Clears all transitions from the model.
 
-        This method resets the `transitions_list` and reinitializes the `transitions` dictionary,
-        clearing all existing transitions while keeping the structure intact for each compartment.
+        This method resets the `transitions_list` and `transitions_idx` and reinitializes the
+        `transitions` dictionary, clearing all existing transitions while keeping the structure
+        intact for each compartment.
 
         Returns:
             None
         """
         self.transitions_list = []
+        self.transitions_idx = {}
         self.transitions = {comp: [] for comp in self.compartments}
 
     def add_intervention(

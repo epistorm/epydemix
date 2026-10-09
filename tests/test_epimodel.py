@@ -92,6 +92,72 @@ def test_transition_management(basic_model):
     assert len(basic_model.transitions_list) == 0
 
 
+def test_clear_transitions_resets_transitions_idx(basic_model):
+    """Clearing transitions and adding different ones must leave a usable model"""
+    basic_model.add_compartments(["S", "I", "R"])
+    basic_model.add_parameter("beta", 0.3)
+    basic_model.add_parameter("gamma", 0.1)
+    basic_model.add_transition("S", "I", "mediated", ("beta", "I"))
+    basic_model.add_transition("I", "R", "spontaneous", "gamma")
+
+    basic_model.clear_transitions()
+    assert basic_model.transitions_idx == {}
+    assert basic_model.transitions == {"S": [], "I": [], "R": []}
+
+    # Re-add in a different order: indices must follow the new transitions
+    basic_model.add_transition("I", "R", "spontaneous", "gamma")
+    basic_model.add_transition("S", "I", "mediated", ("beta", "I"))
+    assert basic_model.transitions_idx == {"I_to_R": 0, "S_to_I": 1}
+
+    results = basic_model.run_simulations(
+        start_date="2020-01-01", end_date="2020-03-01", Nsim=1, rng=1
+    )
+    trajectory = results.trajectories[0]
+    # Every infection in S_to_I leaves S; a swapped index would break this
+    s_total = trajectory.compartments["S_total"]
+    initial_s = basic_model.create_default_initial_conditions()["S"].sum()
+    assert trajectory.transitions["S_to_I_total"].sum() == initial_s - s_total[-1]
+
+    # A different set of transitions must not keep stale names around
+    basic_model.clear_transitions()
+    basic_model.add_transition("S", "R", "spontaneous", "gamma")
+    results = basic_model.run_simulations(
+        start_date="2020-01-01",
+        end_date="2020-01-10",
+        initial_conditions_dict={"S": basic_model.population.Nk.copy()},
+        Nsim=1,
+        rng=1,
+    )
+    transition_names = {
+        name.rsplit("_", 1)[0] for name in results.trajectories[0].transitions
+    }
+    assert transition_names == {"S_to_R"}
+
+
+def test_clear_compartments_clears_transitions(basic_model):
+    """Clearing compartments must also drop the transitions that refer to them"""
+    basic_model.add_compartments(["S", "I", "R"])
+    basic_model.add_transition("S", "I", "mediated", ("beta", "I"))
+
+    basic_model.clear_compartments()
+    assert basic_model.transitions == {}
+    assert basic_model.transitions_list == []
+    assert basic_model.transitions_idx == {}
+
+
+def test_add_duplicate_compartments_raises(basic_model):
+    """Adding a compartment twice must fail without changing the model"""
+    basic_model.add_compartments(["S", "I"])
+
+    with pytest.raises(ValueError, match="already in the model: I"):
+        basic_model.add_compartments(["I", "R"])
+    with pytest.raises(ValueError, match="already in the model: R"):
+        basic_model.add_compartments(["R", "R"])
+
+    assert basic_model.compartments == ["S", "I"]
+    assert basic_model.compartments_idx == {"S": 0, "I": 1}
+
+
 def test_parameter_management(basic_model):
     """Test parameter management"""
     # Test adding single parameter
