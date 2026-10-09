@@ -2,8 +2,9 @@
 
 import numpy as np
 import pytest
+from evalidate import base_eval_model
 
-from epydemix.utils.utils import multinomial
+from epydemix.utils.utils import evaluate, multinomial
 
 # A simple 3-compartment layout: index 0 is the 'stay' compartment, indices 1 and 2
 # are the two 'leave' destinations selected by the mask.
@@ -137,3 +138,17 @@ def test_multinomial_without_rng_is_nondeterministic():
     draw_a = multinomial(1000, RATES, STAY_IDX, MASK, dt=1.0)
     draw_b = multinomial(1000, RATES, STAY_IDX, MASK, dt=1.0)
     assert draw_a != pytest.approx(draw_b)
+
+
+def test_evaluate_does_not_mutate_evalidate_base_model():
+    """evaluate() allows * and ** without touching evalidate's shared allow-list."""
+    nodes_before = list(base_eval_model.nodes)
+
+    env = {"a": np.array([1.0, 2.0]), "b": np.array([3.0, 4.0])}
+    for _ in range(5):
+        result = evaluate("a * (1 - b) ** 2", env)
+
+    assert result == pytest.approx(np.array([4.0, 18.0]))
+    assert base_eval_model.nodes == nodes_before
+    assert "Mult" not in base_eval_model.nodes
+    assert "Pow" not in base_eval_model.nodes

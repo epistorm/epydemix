@@ -266,13 +266,19 @@ def compute_days(
     return pd.date_range(start_date, end_date).shape[0]
 
 
+# Private evaluation model: evalidate's defaults plus multiplication and power.
+# Built once so that evaluate() never mutates evalidate's shared base model.
+_EVAL_MODEL = base_eval_model.clone()
+_EVAL_MODEL.nodes.extend(["Mult", "Pow"])
+
+
 def evaluate(expr: str, env: dict) -> any:
     """
     Evaluates the expression with the given environment, allowing only whitelisted operations.
 
-    This function extends the base evaluation model to whitelist the 'Mult' (multiplication)
-    and 'Pow' (power) operations, ensuring that only these operations are permitted during
-    the evaluation.
+    This function uses a private copy of the base evaluation model that also whitelists the
+    'Mult' (multiplication) and 'Pow' (power) operations, ensuring that only these operations
+    are permitted during the evaluation.
 
     Args:
         expr (str): The expression to evaluate. It is expected to be a string containing
@@ -288,9 +294,7 @@ def evaluate(expr: str, env: dict) -> any:
         EvalException: If there is an error in evaluating the expression, such as an invalid
                        operation or an undefined variable.
     """
-    eval_model = base_eval_model
-    eval_model.nodes.extend(["Mult", "Pow"])
-    return Expr(expr, model=eval_model).eval(env)
+    return Expr(expr, model=_EVAL_MODEL).eval(env)
 
 
 def compute_simulation_dates(
