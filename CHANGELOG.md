@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 * `EpiModel.clear_transitions()` now also resets `transitions_idx`. Previously the old transition names and indices survived the clear, so adding a different set of transitions afterwards made `run_simulations` fail with `RuntimeError: Simulation failed: index N is out of bounds for axis 1 ...`.
 * `EpiModel.clear_compartments()` now also clears the model's transitions, which referred to the removed compartments.
 * `EpiModel.add_compartments()` now raises a `ValueError` when a compartment is already in the model (or repeated in the same call), instead of silently adding a duplicate that left `compartments` and `compartments_idx` out of sync.
+* `EpiModel.create_default_initial_conditions()` now raises a clear `ValueError` asking for `initial_conditions_dict` when the model has no `mediated` transitions (e.g. a spontaneous-only model, or one using only custom transition kinds). Previously it failed with `max() arg is an empty sequence`.
+* Default initial conditions for `load_predefined_model("SIS", vaccination=True)` no longer split the non-infected population evenly between `Susceptible` and `Vaccinated`; everyone who is not infected now starts in `Susceptible`. The fallback used when every mediated source has an inflow now also discards candidates that are fed by another candidate. Simulations of this model that relied on the default initial conditions will give different results.
 
 ---
 

@@ -671,7 +671,15 @@ class EpiModel:
 
         Returns:
             dict: A dictionary with initial conditions for each compartment, with values as arrays representing different age groups.
+
+        Raises:
+            ValueError: If the model has no mediated transitions, since the defaults are inferred from them.
         """
+        if not any(tr.kind == "mediated" for tr in self.transitions_list):
+            raise ValueError(
+                "Default initial conditions are inferred from 'mediated' transitions, but the model has none. "
+                "Please provide initial_conditions_dict explicitly."
+            )
 
         population = self.population.Nk
 
@@ -705,7 +713,9 @@ class EpiModel:
         # Fallback for models where every mediated source also has inflow (e.g. SIRS,
         # where R→S makes Susceptible a target of a spontaneous transition).
         # Use the mediated source with the most outgoing mediated transitions, breaking
-        # ties by preferring compartments that are not targets of mediated transitions.
+        # ties by preferring compartments that are not targets of mediated transitions,
+        # then compartments that are not fed by another candidate (e.g. SIS with
+        # vaccination, where Susceptible→Vaccinated rules out Vaccinated).
         # This reliably selects Susceptible as the residual population holder.
         if not source_compartments:
             from collections import Counter
@@ -719,9 +729,15 @@ class EpiModel:
             ]
             # Prefer candidates not targeted by mediated transitions
             non_mediated_targets = [c for c in candidates if c not in mediated_targets]
-            source_compartments = (
-                non_mediated_targets if non_mediated_targets else candidates
-            )
+            candidates = non_mediated_targets if non_mediated_targets else candidates
+            # Prefer candidates not fed by another candidate
+            fed_by_candidate = {
+                tr.target
+                for tr in self.transitions_list
+                if tr.source in candidates and tr.source != tr.target
+            }
+            not_fed = [c for c in candidates if c not in fed_by_candidate]
+            source_compartments = not_fed if not_fed else candidates
 
         # Total number of agent compartments
         num_agent_compartments = len(agent_compartments)

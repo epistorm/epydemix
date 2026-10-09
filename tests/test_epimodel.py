@@ -158,6 +158,33 @@ def test_add_duplicate_compartments_raises(basic_model):
     assert basic_model.compartments_idx == {"S": 0, "I": 1}
 
 
+def test_default_initial_conditions_without_mediated_transitions(basic_model):
+    """Defaults cannot be inferred without mediated transitions: fail with a clear error"""
+    basic_model.add_compartments(["S", "R"])
+    basic_model.add_parameter("gamma", 0.1)
+
+    with pytest.raises(ValueError, match="initial_conditions_dict"):
+        basic_model.create_default_initial_conditions()
+
+    basic_model.add_transition("S", "R", "spontaneous", "gamma")
+    with pytest.raises(ValueError, match="initial_conditions_dict"):
+        basic_model.create_default_initial_conditions()
+    with pytest.raises(RuntimeError, match="initial_conditions_dict"):
+        basic_model.run_simulations(
+            start_date="2020-01-01", end_date="2020-01-10", Nsim=1
+        )
+
+    # Explicit initial conditions still work
+    results = basic_model.run_simulations(
+        start_date="2020-01-01",
+        end_date="2020-01-10",
+        initial_conditions_dict={"S": basic_model.population.Nk.copy()},
+        Nsim=1,
+        rng=1,
+    )
+    assert results.Nsim == 1
+
+
 def test_parameter_management(basic_model):
     """Test parameter management"""
     # Test adding single parameter
