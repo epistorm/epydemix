@@ -1,3 +1,4 @@
+import warnings
 from typing import Dict, Tuple
 
 import numpy as np
@@ -99,8 +100,24 @@ def mape(data: Dict, simulation: Dict) -> float:
         data (Dict): A Dictionary containing the observed data with a key "data" pointing to an array of observations.
         simulation (Dict): A Dictionary containing the simulated data with a key "data" pointing to an array of simulated values.
 
+    The percentage error is undefined where the observed value is zero, so those points are
+    excluded from the average and a warning is issued. Use `wmape` or `mae` if the zeros matter.
+
     Returns:
         float: The MAPE value indicating the average of the absolute percentage errors between the observed and simulated data.
+
+    Raises:
+        ValueError: If all observed values are zero.
     """
     observed, simulated = validate_data(data, simulation)
+    nonzero = observed != 0
+    if not nonzero.all():
+        if not nonzero.any():
+            raise ValueError(
+                "MAPE is undefined when all observed values are zero. Use a different metric (e.g. mae or rmse)."
+            )
+        warnings.warn(
+            f"{np.sum(~nonzero)} of {observed.size} observed values are zero and are excluded from the MAPE."
+        )
+        observed, simulated = observed[nonzero], simulated[nonzero]
     return np.mean(np.abs((observed - simulated) / observed))
