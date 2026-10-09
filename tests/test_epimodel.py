@@ -99,6 +99,26 @@ def test_transition_management(basic_model):
     assert len(basic_model.transitions_list) == 0
 
 
+def test_add_transition_unknown_kind(basic_model):
+    """An unregistered transition kind fails when the transition is added"""
+    basic_model.add_compartments(["S", "I"])
+
+    with pytest.raises(ValueError, match="Unknown transition kind: 'mediatd'"):
+        basic_model.add_transition("S", "I", "mediatd", ("beta", "I"))
+    assert basic_model.transitions_list == []
+    assert basic_model.transitions_idx == {}
+
+    # A custom kind is accepted once registered
+    def custom_rate(params, data):
+        return params
+
+    with pytest.raises(ValueError, match="Unknown transition kind: 'custom'"):
+        basic_model.add_transition("S", "I", "custom", 0.1)
+    basic_model.register_transition_kind("custom", custom_rate)
+    basic_model.add_transition("S", "I", "custom", 0.1)
+    assert basic_model.n_transitions == 1
+
+
 def test_clear_transitions_resets_transitions_idx(basic_model):
     """Clearing transitions and adding different ones must leave a usable model"""
     basic_model.add_compartments(["S", "I", "R"])

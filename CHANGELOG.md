@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 * Rates written as expressions (e.g. `"beta * (1 - eff)"`) are now evaluated once per simulation instead of once per time step. Previously `compute_spontaneous_transition_rate` and `compute_mediated_transition_rate` deep-copied all parameter arrays and evaluated the expression for every time step at each step, only to keep one row, so the cost grew with the square of the run length. Results are unchanged: outputs are bit-for-bit identical for the same seed, and each `simulate()` call still evaluates expressions with its own parameters, so calibration is unaffected. The one behavioral difference: a custom transition function (registered via `register_transition_kind`) that modifies `data["parameters"]` in the middle of a run no longer affects expression rates for the rest of that run. The new helper `evaluate_rate_expression` in `epimodel.py` holds this logic; calling the rate functions directly with a `data` dictionary that has no `"expression_cache"` key behaves as before.
 
+* `EpiModel.add_transition()` now raises a `ValueError` when `kind` is not a registered transition kind (e.g. a typo such as `"mediatd"`), listing the registered kinds. Previously the mistake only surfaced when running a simulation, often with an unrelated error message. Custom kinds must now be registered with `register_transition_kind` *before* the transitions that use them are added.
+
 ### Fixed
 
 * `EpiModel.clear_transitions()` now also resets `transitions_idx`. Previously the old transition names and indices survived the clear, so adding a different set of transitions afterwards made `run_simulations` fail with `RuntimeError: Simulation failed: index N is out of bounds for axis 1 ...`.

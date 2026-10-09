@@ -466,11 +466,13 @@ class EpiModel:
         Args:
             source (str): The source compartment of the transition.
             target (str): The target compartment of the transition.
-            kind (str): The kind of transition (e.g., spontaneous or mediated).
+            kind (str): The kind of transition (e.g., spontaneous or mediated). Custom kinds must be
+                registered with `register_transition_kind` before being used here.
             params (Any): The parameters involved in the transition.
 
         Raises:
-            ValueError: If the source or target is not in the compartments list.
+            ValueError: If the source or target is not in the compartments list, or if the kind
+                is not a registered transition kind.
 
         Returns:
             None
@@ -481,6 +483,12 @@ class EpiModel:
         if missing_compartments:
             raise ValueError(
                 f"These compartments are not in the compartments list: {', '.join(missing_compartments)}"
+            )
+
+        if kind not in self.transition_functions:
+            raise ValueError(
+                f"Unknown transition kind: '{kind}'. Registered kinds are: {list(self.transition_functions)}. "
+                "Use register_transition_kind to add a custom kind before adding the transition."
             )
 
         transition = Transition(source=source, target=target, kind=kind, params=params)
