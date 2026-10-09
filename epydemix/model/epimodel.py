@@ -1046,6 +1046,9 @@ def stochastic_simulation(
         "pop": None,
         "pop_sizes": pop_sizes,
         "dt": dt,
+        # Rates written as expressions are evaluated once per simulation and reused
+        # at every time step (see evaluate_rate_expression)
+        "expression_cache": {},
     }
 
     # Simulate each time step
@@ -1123,6 +1126,32 @@ def stochastic_simulation(
     return compartments_evolution[1:], transitions_evolution
 
 
+def evaluate_rate_expression(expr: str, data: Dict) -> np.ndarray:
+    """
+    Evaluate a rate written as an expression of the model parameters (e.g. "beta * (1 - eff)").
+
+    The parameters are fixed for the whole simulation, so the result (one row per time step)
+    does not depend on the current step. When `data` has an "expression_cache" dictionary, as
+    set up by `stochastic_simulation`, each expression is evaluated once per simulation and
+    reused at every step. Without it, the expression is evaluated at every call.
+
+    Args:
+        expr: The expression to evaluate.
+        data: A dictionary containing the data needed for the transition.
+            - parameters: The model parameters
+            - expression_cache (optional): Expressions already evaluated in this simulation
+
+    Returns:
+        The evaluated expression for all time steps
+    """
+    cache = data.get("expression_cache")
+    if cache is None:
+        return evaluate(expr=expr, env=copy.deepcopy(data["parameters"]))
+    if expr not in cache:
+        cache[expr] = evaluate(expr=expr, env=copy.deepcopy(data["parameters"]))
+    return cache[expr]
+
+
 def compute_spontaneous_transition_rate(params, data):
     """
     Compute the rate of a spontaneous transition.
@@ -1140,8 +1169,7 @@ def compute_spontaneous_transition_rate(params, data):
         parameters = data["parameters"]
         if params in parameters:
             return parameters[params][t]
-        env_copy = copy.deepcopy(parameters)
-        return evaluate(expr=params, env=env_copy)[t]
+        return evaluate_rate_expression(params, data)[t]
     else:
         return params
 
@@ -1166,7 +1194,7 @@ def compute_mediated_transition_rate(params, data):
         if params[0] in parameters:
             rate_eval = parameters[params[0]][t]
         else:
-            rate_eval = evaluate(expr=params[0], env=copy.deepcopy(parameters))[t]
+            rate_eval = evaluate_rate_expression(params[0], data)[t]
     else:
         rate_eval = params[0]
     agent_idx = data["comp_indices"][params[1]]

@@ -5,7 +5,14 @@ matplotlib.use("Agg")  # Use non-GUI backend before importing pyplot
 
 import numpy as np
 
-from epydemix.model.epimodel import EpiModel, stochastic_simulation
+import epydemix.model.epimodel as epimodel_module
+from epydemix.model.epimodel import (
+    EpiModel,
+    compute_mediated_transition_rate,
+    compute_spontaneous_transition_rate,
+    simulate,
+    stochastic_simulation,
+)
 from epydemix.population import Population
 from epydemix.utils.utils import apply_initial_conditions
 
@@ -391,3 +398,96 @@ def test_stochastic_simulation_duplicate_transition_pair_not_double_counted(
     susceptible_start = initial_conditions[susceptible_idx, :].sum()
     susceptible_end = compartments_evolution[-1, susceptible_idx].sum()
     assert np.isclose(susceptible_start - susceptible_end, total_inflow)
+
+
+def _expression_model(transmission="beta * (1 - eff)", recovery="gamma * 1"):
+    """SIR model on 3 groups whose rates can be given as expressions or parameter names"""
+    model = EpiModel(
+        compartments=["S", "I", "R"],
+        parameters={"beta": 0.3, "eff": 0.0, "gamma": 0.1},
+    )
+    model.add_transition("S", "I", "mediated", (transmission, "I"))
+    model.add_transition("I", "R", "spontaneous", recovery)
+
+    population = Population()
+    population.add_population([1000, 2000, 3000])
+    population.add_contact_matrix(np.ones((3, 3)))
+    model.set_population(population)
+    return model
+
+
+def _assert_same_trajectory(trajectory_a, trajectory_b):
+    for name in ("compartments", "transitions"):
+        values_a, values_b = getattr(trajectory_a, name), getattr(trajectory_b, name)
+        assert values_a.keys() == values_b.keys()
+        for key in values_a:
+            np.testing.assert_array_equal(values_a[key], values_b[key])
+
+
+def test_expression_rates_evaluated_once_per_simulation(monkeypatch):
+    """Each distinct expression is evaluated once per simulation, not once per step"""
+    calls = []
+    original_evaluate = epimodel_module.evaluate
+
+    def counting_evaluate(expr, env):
+        calls.append(expr)
+        return original_evaluate(expr=expr, env=env)
+
+    monkeypatch.setattr(epimodel_module, "evaluate", counting_evaluate)
+
+    model = _expression_model()
+    model.run_simulations(start_date="2020-01-01", end_date="2020-03-01", Nsim=3, rng=1)
+    assert sorted(calls) == sorted(["beta * (1 - eff)", "gamma * 1"] * 3)
+
+
+def test_expression_rates_match_plain_parameters():
+    """An expression rate gives exactly the results of the equivalent parameter"""
+    kwargs = dict(start_date="2020-01-01", end_date="2020-04-01", rng=7)
+
+    # Time-varying beta and an override on eff, so the expression changes over time
+    beta = np.linspace(0.2, 0.5, 92)
+    override = dict(start_date="2020-02-01", end_date="2020-02-20", value=0.6)
+
+    expression_model = _expression_model()
+    expression_model.add_parameter("beta", beta)
+    expression_model.override_parameter(parameter_name="eff", **override)
+
+    plain_model = _expression_model(transmission="rate", recovery="gamma")
+    eff = np.where((np.arange(92) >= 31) & (np.arange(92) <= 50), 0.6, 0.0)
+    plain_model.add_parameter("rate", beta * (1 - eff))
+
+    _assert_same_trajectory(
+        simulate(expression_model, **kwargs), simulate(plain_model, **kwargs)
+    )
+
+
+def test_expression_rates_follow_parameters_of_each_run():
+    """Expression values are not carried over between runs with different parameters"""
+    kwargs = dict(start_date="2020-01-01", end_date="2020-04-01", rng=7)
+    expression_model = _expression_model()
+    plain_model = _expression_model(transmission="beta", recovery="gamma")
+
+    low = simulate(expression_model, beta=0.2, **kwargs)
+    high = simulate(expression_model, beta=0.6, **kwargs)
+
+    _assert_same_trajectory(low, simulate(plain_model, beta=0.2, **kwargs))
+    _assert_same_trajectory(high, simulate(plain_model, beta=0.6, **kwargs))
+    assert not np.array_equal(low.compartments["I_total"], high.compartments["I_total"])
+
+
+def test_rate_functions_without_expression_cache():
+    """The rate functions still work when called directly with a plain data dictionary"""
+    data = {
+        "parameters": {"beta": np.full((5, 2), 0.3), "eff": np.full((5, 2), 0.5)},
+        "t": 2,
+        "comp_indices": {"S": 0, "I": 1},
+        "contact_matrix": {"overall": np.ones((2, 2))},
+        "pop": np.array([[90.0, 80.0], [10.0, 20.0]]),
+        "pop_sizes": np.array([100.0, 100.0]),
+    }
+    rate = compute_spontaneous_transition_rate("beta * (1 - eff)", data)
+    np.testing.assert_allclose(rate, [0.15, 0.15])
+
+    rate = compute_mediated_transition_rate(("beta * (1 - eff)", "I"), data)
+    np.testing.assert_allclose(rate, [0.15 * 0.3, 0.15 * 0.3])
+    assert "expression_cache" not in data
