@@ -35,6 +35,11 @@ dependencies = [
 numba = [
     "numba>=0.57.0",
 ]
+docs = [
+    "sphinx>=7.0",
+    "furo>=2024.1.29",
+    "myst-nb>=1.0",
+]
 
 [project.urls]
 # Optional links related to your project

@@ -182,3 +182,8 @@ sandbox/
 
 # Local task list
 TODO.md
+
+# Docs: build output and the tutorial notebooks copied in at build time
+docs/build/
+docs/source/tutorials/*.ipynb
+docs/source/jupyter_execute/
