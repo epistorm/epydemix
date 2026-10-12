@@ -319,6 +319,93 @@ def test_remove_compartment():
     _assert_same_trajectory(simulate(model, **kwargs), simulate(reference, **kwargs))
 
 
+def test_copy_is_independent():
+    """Changes to a copy do not reach the original, and the other way round"""
+
+    def custom_rate(params, data):
+        return params
+
+    model = _two_strain_free_model()
+    model.register_transition_kind("custom", custom_rate)
+    model.add_intervention("all", "2020-02-01", "2020-03-01", reduction_factor=0.5)
+    model.override_parameter("2020-02-01", "2020-03-01", "mu", 0.2)
+    model.add_parameter("beta", np.linspace(0.2, 0.4, 61))
+    model.run_simulations(start_date="2020-01-01", end_date="2020-03-01", Nsim=1)
+
+    clone = model.copy()
+    assert clone is not model
+    assert clone.name == model.name
+    assert model.copy(name="scenario").name == "scenario"
+    assert clone.compartments == model.compartments
+    assert clone.transitions_idx == model.transitions_idx
+    assert clone.transition_functions["custom"] is custom_rate
+    # Caches left by the last run are not carried over
+    assert clone.Cs == {} and clone.definitions == {}
+    assert model.Cs != {} and model.definitions != {}
+
+    # The copy has its own transitions, shared consistently between its containers
+    assert clone.transitions_list[0] is not model.transitions_list[0]
+    assert clone.transitions["S"][0] is clone.transitions_list[0]
+
+    # Change everything on the copy
+    clone.parameters["beta"][:] = 9.0
+    clone.add_parameter("mu", 0.9)
+    clone.add_compartments("D")
+    clone.add_transition("I", "D", "custom", 0.01)
+    clone.remove_transition("S", "E", agent="A")
+    clone.transitions_list[0].params = ("mu", "I")
+    clone.add_intervention("all", "2020-01-10", "2020-01-20", reduction_factor=0.1)
+    clone.interventions[0]["reduction_factor"] = 0.0
+    clone.override_parameter("2020-01-05", "2020-01-10", "mu", 0.3)
+    clone.overrides["mu"][0]["value"] = 0.0
+    clone.population.Nk[:] = 1
+    clone.population.contact_matrices["all"][:] = 0.0
+
+    reference = _two_strain_free_model()
+    assert model.compartments == reference.compartments
+    assert "D" not in model.transitions
+    assert model.transitions_idx == reference.transitions_idx
+    assert [tr.params for tr in model.transitions_list] == [
+        tr.params for tr in reference.transitions_list
+    ]
+    np.testing.assert_array_equal(model.parameters["beta"], np.linspace(0.2, 0.4, 61))
+    assert model.parameters["mu"] == 0.1
+    assert len(model.interventions) == 1
+    assert model.interventions[0]["reduction_factor"] == 0.5
+    assert len(model.overrides["mu"]) == 1 and model.overrides["mu"][0]["value"] == 0.2
+    np.testing.assert_array_equal(model.population.Nk, reference.population.Nk)
+    np.testing.assert_array_equal(
+        model.population.contact_matrices["all"],
+        reference.population.contact_matrices["all"],
+    )
+
+    # ... and changes to the original do not reach a copy
+    clone = model.copy()
+    model.add_parameter("mu", 0.5)
+    model.clear_interventions()
+    assert clone.parameters["mu"] == 0.1
+    assert len(clone.interventions) == 1
+
+
+def test_copy_gives_same_results():
+    """An unmodified copy simulates exactly like the original"""
+    model = _two_strain_free_model()
+    model.add_intervention("all", "2020-02-01", "2020-03-01", reduction_factor=0.5)
+    model.override_parameter("2020-02-01", "2020-03-01", "mu", 0.2)
+    clone = model.copy()
+
+    kwargs = dict(start_date="2020-01-01", end_date="2020-04-01", rng=11)
+    _assert_same_trajectory(simulate(model, **kwargs), simulate(clone, **kwargs))
+
+    # A scenario on the copy changes the copy only
+    clone.add_parameter("beta", 0.6)
+    scenario, baseline = simulate(clone, **kwargs), simulate(model, **kwargs)
+    assert not np.array_equal(
+        scenario.compartments["R_total"], baseline.compartments["R_total"]
+    )
+    _assert_same_trajectory(baseline, simulate(model.copy(), **kwargs))
+
+
 def test_parameter_management(basic_model):
     """Test parameter management"""
     # Test adding single parameter

@@ -905,6 +905,33 @@ class EpiModel:
         """
         self.population = population
 
+    def copy(self, name: Optional[str] = None) -> "EpiModel":
+        """
+        Returns an independent copy of the model, e.g. to compare scenarios.
+
+        Compartments, parameters, overrides, transitions, interventions, registered transition
+        kinds and the population are all copied, so changing the copy never affects the original
+        (and vice versa).
+
+        Args:
+            name (str, optional): The name of the copy. Defaults to the name of the original.
+
+        Returns:
+            EpiModel: The copied model.
+
+        Example:
+            >>> baseline = load_predefined_model("SIR")
+            >>> lockdown = baseline.copy(name="lockdown")
+            >>> lockdown.add_intervention("work", "2020-03-01", "2020-05-01", reduction_factor=0.3)
+        """
+        # Cs and definitions are rebuilt at every simulation: start the copy with empty ones
+        # instead of duplicating what the last run left behind
+        memo = {id(self.Cs): {}, id(self.definitions): {}}
+        new_model = copy.deepcopy(self, memo)
+        if name is not None:
+            new_model.name = name
+        return new_model
+
     def run_simulations(
         self,
         start_date: Union[str, pd.Timestamp] = "2020-01-01",
