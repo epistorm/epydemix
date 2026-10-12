@@ -360,3 +360,55 @@ def test_get_quantiles_compartments_variables_with_ignore_nan(
     )
     assert "I" in df.columns
     assert "S" not in df.columns
+
+
+def test_to_dataframe_all_variables(mock_trajectory_data_no_nan):
+    """One row per simulation, date and variable, with the values of each trajectory"""
+    results = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    df = results.to_dataframe()
+
+    variables = ["S", "I", "R", "S_to_I", "I_to_R"]
+    assert list(df.columns) == ["sim_id", "date", "variable", "value"]
+    assert len(df) == 5 * 10 * len(variables)
+    assert sorted(df["sim_id"].unique()) == [0, 1, 2, 3, 4]
+    assert list(df["variable"].unique()) == variables
+    assert pd.api.types.is_datetime64_any_dtype(df["date"])
+    assert not df.duplicated(["sim_id", "date", "variable"]).any()
+
+    # Every value matches the trajectory it came from
+    for sim_id, trajectory in enumerate(mock_trajectory_data_no_nan):
+        for name, expected in {
+            **trajectory.compartments,
+            **trajectory.transitions,
+        }.items():
+            rows = df[(df["sim_id"] == sim_id) & (df["variable"] == name)]
+            np.testing.assert_array_equal(rows["value"].to_numpy(), expected)
+            assert rows["date"].tolist() == trajectory.dates
+
+
+def test_to_dataframe_variables_filter(mock_trajectory_data_no_nan):
+    """Variables can mix compartments and transitions; unknown names are rejected"""
+    results = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+
+    df = results.to_dataframe(variables=["S_to_I", "I"])
+    assert list(df["variable"].unique()) == ["S_to_I", "I"]
+    assert len(df) == 5 * 10 * 2
+
+    with pytest.raises(ValueError, match="Unknown variables: \\['X'\\]"):
+        results.to_dataframe(variables=["I", "X"])
+
+
+def test_to_dataframe_matches_quantiles(mock_trajectory_data_no_nan):
+    """Medians computed from the long format agree with get_quantiles_compartments"""
+    results = SimulationResults(trajectories=mock_trajectory_data_no_nan, parameters={})
+    df = results.to_dataframe(variables=["I"])
+    median = df.groupby("date")["value"].median().to_numpy()
+
+    quantiles = results.get_quantiles_compartments(quantiles=[0.5])
+    np.testing.assert_allclose(median, quantiles["I"].to_numpy())
+
+
+def test_to_dataframe_empty():
+    df = SimulationResults(trajectories=[], parameters={}).to_dataframe()
+    assert list(df.columns) == ["sim_id", "date", "variable", "value"]
+    assert df.empty

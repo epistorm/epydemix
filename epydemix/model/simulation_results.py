@@ -169,6 +169,58 @@ class SimulationResults:
         stacked = self.get_stacked_compartments(variables=variables)
         return self.get_quantiles(stacked, quantiles, ignore_nan)
 
+    def to_dataframe(self, variables: Optional[List[str]] = None) -> pd.DataFrame:
+        """
+        Get all trajectories as a single DataFrame in tidy (long) format, with one row per
+        simulation, date and variable.
+
+        Compartments and transitions are both included, with the same names used elsewhere
+        (e.g. `I_total`, `I_0-4`, `S_to_I_total`).
+
+        Args:
+            variables: List of compartment and/or transition names to include. If None, all
+                compartments and transitions are included.
+
+        Returns:
+            pd.DataFrame: A DataFrame with columns `sim_id` (index of the simulation, from 0),
+                `date`, `variable` and `value`, sorted by simulation, then variable, then date.
+
+        Raises:
+            ValueError: If a requested variable is neither a compartment nor a transition.
+
+        Example:
+            >>> df = results.to_dataframe(variables=["I_total", "S_to_I_total"])
+            >>> sns.lineplot(data=df, x="date", y="value", hue="variable", units="sim_id", estimator=None)
+        """
+        columns = ["sim_id", "date", "variable", "value"]
+        if not self.trajectories:
+            return pd.DataFrame(columns=columns)
+
+        stacked = {**self.get_stacked_compartments(), **self.get_stacked_transitions()}
+        if variables is not None:
+            unknown = [name for name in variables if name not in stacked]
+            if unknown:
+                raise ValueError(
+                    f"Unknown variables: {unknown}. Available variables are: {list(stacked)}"
+                )
+            stacked = {name: stacked[name] for name in dict.fromkeys(variables)}
+
+        names = list(stacked)
+        dates = pd.DatetimeIndex(self.dates)
+        n_sim, n_var, n_dates = self.Nsim, len(names), len(dates)
+
+        # (variables, Nsim, dates) -> (Nsim, variables, dates), flattened in that order
+        values = np.stack(list(stacked.values())).transpose(1, 0, 2).ravel()
+        return pd.DataFrame(
+            {
+                "sim_id": np.repeat(np.arange(n_sim), n_var * n_dates),
+                "date": np.tile(dates, n_sim * n_var),
+                "variable": np.tile(np.repeat(names, n_dates), n_sim),
+                "value": values,
+            },
+            columns=columns,
+        )
+
     def resample(
         self, freq: str, method: str = "last", fill_method: str = "ffill"
     ) -> "SimulationResults":
