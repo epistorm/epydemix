@@ -52,6 +52,7 @@ docs = [
     "sphinx>=7.0",
     "furo>=2024.1.29",
     "myst-nb>=1.0",
+    "pyarrow>=12.0",  # to import epydemix.io for the API reference
 ]
 
 [project.urls]

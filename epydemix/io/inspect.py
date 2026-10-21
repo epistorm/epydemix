@@ -75,22 +75,28 @@ def _apply_time_slice(
     return df
 
 
-# Period-end aliases that pandas 2.2 renamed ("M" -> "ME", ...) and pandas 3
-# no longer accepts under their old names.
+# Period-end aliases that pandas 2.2 renamed ("M" -> "ME", ...). pandas 3 only
+# accepts the new names, and pandas < 2.2 only the old ones.
 _PERIOD_END_ALIASES = {"M": "ME", "Q": "QE", "Y": "YE", "A": "YE"}
 
 
 def _resolve_frequency(freq: str) -> str:
-    """Translate an old period-end alias to the name this pandas expects."""
+    """Accept both names of a period-end alias, whichever pandas is installed."""
     match = re.fullmatch(r"(\d*)([A-Za-z]+)", freq)
-    if not match or match.group(2).upper() not in _PERIOD_END_ALIASES:
+    if not match:
         return freq
-    renamed = match.group(1) + _PERIOD_END_ALIASES[match.group(2).upper()]
+    count, unit = match.group(1), match.group(2).upper()
+    if unit in _PERIOD_END_ALIASES:
+        new, old = _PERIOD_END_ALIASES[unit], unit
+    elif unit in _PERIOD_END_ALIASES.values():
+        new, old = unit, unit[:-1]
+    else:
+        return freq
     try:
-        to_offset(renamed)
+        to_offset(count + new)
     except ValueError:
-        return freq  # pandas < 2.2 only knows the old alias
-    return renamed
+        return count + old
+    return count + new
 
 
 def _resample_grouped(
