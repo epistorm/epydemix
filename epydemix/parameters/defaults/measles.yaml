@@ -1,0 +1,24 @@
+name: "Measles"
+model_type: "SEIR"
+source: "Literature consensus values for measles in unvaccinated populations"
+description: >
+  Default parameters for a basic SEIR model of measles. Highly transmissible
+  (R0 ~12-18). Long incubation (~10-12 days) and moderate infectious period
+  (~8 days). These values assume no vaccination.
+
+parameters:
+  transmission_rate:
+    value: 1.5
+    range: [0.8, 2.5]
+    units: "1/days"
+    description: "Effective transmission rate per contact per day (very high due to airborne spread)"
+  incubation_rate:
+    value: 0.09
+    range: [0.07, 0.12]
+    units: "1/days"
+    description: "Rate of progression from exposed to infectious (1/mean_incubation_period, ~11 days)"
+  recovery_rate:
+    value: 0.125
+    range: [0.1, 0.17]
+    units: "1/days"
+    description: "Rate of recovery from infection (1/mean_infectious_period, ~8 days)"

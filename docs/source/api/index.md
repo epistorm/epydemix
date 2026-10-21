@@ -13,6 +13,7 @@ from epydemix import EpiModel, load_predefined_model, simulate
 | {doc}`population` | `Population` and loading population data |
 | {doc}`calibration` | `ABCSampler`, calibration results, distance functions |
 | {doc}`visualization` | plotting functions |
+| {doc}`io` | reading and writing result bundles, the format of the command-line interface |
 | {doc}`utils` | lower-level functions, not needed for normal use |
 
 ```{toctree}
@@ -23,5 +24,6 @@ model
 population
 calibration
 visualization
+io
 utils
 ```

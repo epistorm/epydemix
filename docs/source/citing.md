@@ -17,5 +17,20 @@ epydemix in your work, please cite it:
 }
 ```
 
+If you use the {doc}`command-line interface and agent framework <guide/cli>`, please
+also cite its [preprint](https://arxiv.org/abs/2609.28692):
+
+```bibtex
+@misc{gozzi2026agent,
+  title={Driving Epidemic Models with AI Agents: the Epydemix Agent Framework},
+  author={Gozzi, Nicol{\`o} and Cattuto, Ciro and Vespignani, Alessandro},
+  year={2026},
+  eprint={2609.28692},
+  archivePrefix={arXiv},
+  primaryClass={cs.AI},
+  doi={10.48550/arXiv.2609.28692}
+}
+```
+
 epydemix is released under the
 [GPL-3.0 license](https://github.com/epistorm/epydemix/blob/main/LICENSE).

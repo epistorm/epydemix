@@ -87,6 +87,7 @@ We provide a series of tutorials to help you get started with **epydemix**.
 - [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations and Calibration with Multiprocessing
 - [Tutorial 11](https://github.com/epistorm/epydemix/blob/main/tutorials/11_Epistorm_Mix_Matrices.ipynb): Using Epistorm-Mix Contact Matrices (sex and race/ethnicity)
 - [Tutorial 12](https://github.com/epistorm/epydemix/blob/main/tutorials/12_Predefined_Models.ipynb): Predefined Epidemic Models — Backbones and Modular Extensions
+- [Tutorial 13](https://github.com/epistorm/epydemix/blob/main/tutorials/13_Command_Line_Interface.ipynb): The Command-Line Interface — Scenarios, Calibration, and Projections from YAML Configs
 
 You can run all tutorials directly in Google Colab — just open any notebook in the [tutorials](./tutorials) folder and click the **“Open in Colab”** button at the top.
 
@@ -120,7 +121,17 @@ For more information about the available population and contact matrices and to 
 ---
 ## Agent Framework
 
-Epydemix also ships a CLI for driving simulations programmatically — designed for use by LLM agents and automation pipelines, but equally usable from the shell. It covers discovery, config validation, running, and inspecting results end-to-end. See [AGENT.md](https://github.com/epistorm/epydemix/blob/agent-framework/AGENT.md) on the `agent-framework` branch for the full contract and worked examples.
+Epydemix also ships a CLI for driving simulations programmatically — designed for use by LLM agents and automation pipelines, but equally usable from the shell. It covers discovery, config validation, running, calibration, and inspecting results end-to-end.
+
+```bash
+pip install "epydemix[agent]"
+
+epydemix models                                  # discover available models
+epydemix run config.yaml --output results.epx    # run a YAML-configured simulation
+epydemix inspect results.epx peak -v I_total     # query results as compact JSON
+```
+
+See [AGENT_FRAMEWORK.md](AGENT_FRAMEWORK.md) for an overview and quick start, [AGENT.md](AGENT.md) for the full CLI and config reference, and [AGENT_EXAMPLES.md](AGENT_EXAMPLES.md) for worked examples.
 
 ---
 ## Citation 
