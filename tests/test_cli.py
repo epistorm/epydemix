@@ -1799,6 +1799,42 @@ def _run_calibration(tmp_path, name="cal.epx"):
     return bundle_path
 
 
+class TestCalibrateSeed:
+    """A calibration must always resolve, record and honour an RNG seed."""
+
+    @staticmethod
+    def _calibrate(tmp_path, config, name):
+        config_path = _write_yaml(tmp_path, config, f"{name}.yaml")
+        bundle = str(tmp_path / f"{name}.epx")
+        result = CliRunner().invoke(cli, ["calibrate", config_path, "-o", bundle])
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        with open(os.path.join(bundle, "manifest.json")) as fh:
+            manifest = json.load(fh)
+        posterior = pd.read_parquet(os.path.join(bundle, "posterior.parquet"))
+        return bundle, manifest, posterior
+
+    def test_seed_is_recorded_even_when_not_requested(self, tmp_path):
+        bundle, manifest, _ = self._calibrate(tmp_path, _calibration_config(), "auto")
+        seed = manifest["provenance"]["seed"]
+        assert isinstance(seed, int)
+        stored = load_config(os.path.join(bundle, "config.yaml"))
+        assert stored["simulation"]["seed"] == seed
+
+    def test_same_seed_reproduces_posterior(self, tmp_path):
+        config = _calibration_config()
+        config["simulation"]["seed"] = 7
+        _, manifest, a = self._calibrate(tmp_path, config, "rep_a")
+        _, _, b = self._calibrate(tmp_path, config, "rep_b")
+        assert manifest["provenance"]["seed"] == 7
+        assert a.equals(b)
+
+    def test_rerunning_a_stored_config_reproduces_the_posterior(self, tmp_path):
+        original, _, a = self._calibrate(tmp_path, _calibration_config(), "orig")
+        stored = load_config(os.path.join(original, "config.yaml"))
+        _, _, b = self._calibrate(tmp_path, stored, "replay")
+        assert a.equals(b)
+
+
 class TestProjectionConfig:
     """Tests for projection config validation."""
 

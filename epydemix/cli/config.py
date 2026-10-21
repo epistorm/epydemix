@@ -1227,9 +1227,11 @@ def _make_simulation_function(
     target = config.get("calibration", {}).get("target_variable")
 
     def sim_fn(params: Dict[str, Any]) -> Dict[str, Any]:
-        # Update model parameters with sampled values
+        # Update model parameters with sampled values. A seeded ABCSampler also
+        # passes its generator as "rng", which drives the simulation instead.
         for name, value in params.items():
-            model.parameters[name] = value
+            if name != "rng":
+                model.parameters[name] = value
 
         results = simulate(
             epimodel=model,
@@ -1237,6 +1239,7 @@ def _make_simulation_function(
             end_date=sim_cfg["end_date"],
             dt=sim_cfg.get("dt", 1.0),
             initial_conditions_dict=ic,
+            rng=params.get("rng"),
         )
 
         # Extract target variable — search compartments first, then
@@ -1362,6 +1365,12 @@ def calibrate_from_config(
 
     cal_cfg = config.get("calibration", {})
 
+    # As in run_from_config: resolve a seed even when the config omits one and
+    # store it in the returned config, so the calibration can be reproduced.
+    seed = resolve_seed(config.get("simulation", {}))
+    config = copy.deepcopy(config)
+    config.setdefault("simulation", {})["seed"] = seed
+
     # Build components
     priors = build_priors(cal_cfg)
     observed = load_observed_data(cal_cfg, config_dir=config_dir)
@@ -1379,6 +1388,7 @@ def calibrate_from_config(
         parameters=fixed_params,
         observed_data=observed,
         distance_function=distance_fn,
+        rng=seed,
     )
 
     # Extract strategy-specific kwargs

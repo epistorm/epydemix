@@ -398,7 +398,7 @@ Fields vary by command:
 | `command` | all | The CLI command that created this bundle (`run`, `calibrate`, `project`) |
 | `config_path` | all | Absolute path to the config file used — may go stale; prefer `config_sha256` |
 | `config_sha256` | all | Hash of the resolved config actually used, which is stored in the bundle |
-| `seed` | `run`, `project` | RNG seed for the run (see Reproducibility below) |
+| `seed` | all | RNG seed for the run (see Reproducibility below) |
 | `parent_bundle` | `project` only | Absolute path to the calibration bundle the projection sampled from |
 
 Use provenance to trace the dependency chain: a projection bundle points back to its calibration bundle, and both point to their config files. This makes it possible to reconstruct the full lineage of any result.
