@@ -18,6 +18,8 @@ and calibrate the model to data with Approximate Bayesian Computation (ABC).
 - **Calibration**: ABC-SMC, rejection and top-fraction sampling, then projections from
   the posterior.
 - **Plots**: quantile bands, trajectories, posteriors, contact matrices.
+- **Command line and AI agents**: run, compare and calibrate models from YAML configs
+  with the `epydemix` command, designed so that LLM agents can drive it too.
 
 ## Installation
 
@@ -33,6 +35,7 @@ conda install -c conda-forge epydemix
 
 Requires Python 3.8 or later. For faster simulations, `pip install "epydemix[numba]"`
 adds an optional JIT-compiled speedup; epydemix runs fine without it, just slower.
+`pip install "epydemix[agent]"` adds the {doc}`command-line interface <guide/cli>`.
 
 ## Quickstart
 
@@ -72,6 +75,7 @@ guide/simulations
 guide/interventions
 guide/calibration
 guide/plotting
+guide/cli
 ```
 
 ```{toctree}
@@ -105,11 +109,13 @@ citing
 - {doc}`guide/interventions`: reducing contacts and changing parameters over a period
 - {doc}`guide/calibration`: fitting a model to data with ABC and projecting forward
 - {doc}`guide/plotting`: the built-in plots
+- {doc}`guide/cli`: the `epydemix` command, YAML configs and result bundles, and driving
+  epydemix with an AI agent
 
 **Learn**
 
-- {doc}`tutorials/index`: twelve worked notebooks, from a first model to a COVID-19 case
-  study
+- {doc}`tutorials/index`: thirteen worked notebooks, from a first model to a COVID-19
+  case study and the command-line interface
 
 **Reference**
 
