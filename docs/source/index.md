@@ -7,7 +7,8 @@ and calibrate the model to data with Approximate Bayesian Computation (ABC).
 [Website](https://www.epydemix.org/) ·
 [GitHub](https://github.com/epistorm/epydemix) ·
 [Paper](https://doi.org/10.1371/journal.pcbi.1013735) ·
-[PyPI](https://pypi.org/project/epydemix/)
+[PyPI](https://pypi.org/project/epydemix/) ·
+[Roadmap](https://github.com/orgs/epistorm/projects/2)
 
 - **Any compartmental model**: SIR, SEIR and friends are built in, and you can define
   your own compartments, transitions and transition rules.
