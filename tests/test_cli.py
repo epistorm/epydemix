@@ -341,6 +341,32 @@ class TestValidatePredefinedParameters:
         assert not result["valid"]
         assert fragment in _errors(result)
 
+    def test_parameters_left_to_defaults_are_named(self):
+        result = validate_config(
+            _with(MINIMAL_CONFIG, parameters={"transmission_rate": 0.3})
+        )
+        assert result["valid"]
+        defaults = [w for w in result["warnings"] if "model default" in w]
+        assert defaults == [
+            "No value given for recovery_rate = 0.1; using the model default"
+        ]
+
+    def test_no_defaults_warning_when_priors_set_the_rest(self):
+        """A calibration that estimates every parameter has none left to default."""
+        config = _with(
+            MINIMAL_CONFIG,
+            calibration={
+                "priors": {
+                    "transmission_rate": {"distribution": "uniform"},
+                    "recovery_rate": {"distribution": "uniform"},
+                },
+                "observed_data": [1.0],
+            },
+        )
+        del config["parameters"]
+        result = validate_config(config)
+        assert not any("model default" in w for w in result["warnings"])
+
     def test_misspelled_name_gets_a_suggestion(self):
         params = {"transmision_rate": 0.3, "recovery_rate": 0.1}
         result = validate_config(_with(MINIMAL_CONFIG, parameters=params))
@@ -1148,6 +1174,97 @@ class TestCLIInspect:
         runner = CliRunner()
         result = runner.invoke(cli, ["inspect", bundle, "nonexistent"])
         assert result.exit_code != 0
+
+    @staticmethod
+    def _three_month_bundle(tmp_path):
+        model = load_predefined_model("SIR", transmission_rate=0.3, recovery_rate=0.1)
+        model.set_population(_simple_population())
+        results = model.run_simulations(
+            start_date="2023-01-01",
+            end_date="2023-03-31",
+            initial_conditions_dict={
+                "Susceptible": np.array([9900]),
+                "Infected": np.array([100]),
+                "Recovered": np.array([0]),
+            },
+            Nsim=3,
+            rng=0,
+        )
+        path = str(tmp_path / "three_months.epx")
+        save_bundle(results, path)
+        return path, results
+
+    @pytest.mark.parametrize("command", ["quantiles", "summary", "peak"])
+    def test_inspect_transition_variable(self, tmp_path, command):
+        bundle = _make_bundle(tmp_path)
+        var = "Susceptible_to_Infected_total"
+        result = CliRunner().invoke(cli, ["inspect", bundle, command, "-v", var])
+        assert result.exit_code == 0, result.output
+        assert var in json.loads(result.output)
+
+    def test_inspect_mixes_compartments_and_transitions(self, tmp_path):
+        bundle = _make_bundle(tmp_path)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "inspect",
+                bundle,
+                "quantiles",
+                "-v",
+                "Infected_total,Susceptible_to_Infected_total",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert {"Infected_total", "Susceptible_to_Infected_total"} <= set(data)
+
+    def test_inspect_unknown_variable_lists_available(self, tmp_path):
+        bundle = _make_bundle(tmp_path)
+        result = CliRunner().invoke(
+            cli, ["inspect", bundle, "peak", "-v", "Infected_totl"]
+        )
+        assert result.exit_code != 0
+        assert "Unknown variable 'Infected_totl'" in result.output
+        assert "Susceptible_to_Infected_total" in result.output
+
+    @pytest.mark.parametrize("freq", ["M", "ME"])
+    def test_inspect_monthly_resample(self, tmp_path, freq):
+        """Months accept the old alias; levels keep the last value, flows sum."""
+        bundle, results = self._three_month_bundle(tmp_path)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "inspect",
+                bundle,
+                "quantiles",
+                "-v",
+                "Infected_total,Susceptible_to_Infected_total",
+                "-q",
+                "0.5",
+                "--resample",
+                freq,
+                "--round",
+                "10",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["dates"] == ["2023-01-31", "2023-02-28", "2023-03-31"]
+
+        dates = pd.DatetimeIndex(results.dates)
+        prevalence = pd.DataFrame(
+            results.get_stacked_compartments()["Infected_total"].T, index=dates
+        )
+        incidence = pd.DataFrame(
+            results.get_stacked_transitions()["Susceptible_to_Infected_total"].T,
+            index=dates,
+        )
+        expected_last = prevalence.resample("MS").last().median(axis=1)
+        expected_sum = incidence.resample("MS").sum().median(axis=1)
+        np.testing.assert_allclose(data["Infected_total"]["0.5"], expected_last.values)
+        np.testing.assert_allclose(
+            data["Susceptible_to_Infected_total"]["0.5"], expected_sum.values
+        )
 
 
 # ---------------------------------------------------------------------------

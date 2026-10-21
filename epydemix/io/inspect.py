@@ -4,10 +4,12 @@ Each function reads from the on-disk Parquet files, computes an answer,
 and returns a compact dictionary suitable for JSON serialization to stdout.
 """
 
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
+from pandas.tseries.frequencies import to_offset
 
 from .bundle import load_bundle, load_bundle_dataframe
 
@@ -73,28 +75,88 @@ def _apply_time_slice(
     return df
 
 
+# Period-end aliases that pandas 2.2 renamed ("M" -> "ME", ...) and pandas 3
+# no longer accepts under their old names.
+_PERIOD_END_ALIASES = {"M": "ME", "Q": "QE", "Y": "YE", "A": "YE"}
+
+
+def _resolve_frequency(freq: str) -> str:
+    """Translate an old period-end alias to the name this pandas expects."""
+    match = re.fullmatch(r"(\d*)([A-Za-z]+)", freq)
+    if not match or match.group(2).upper() not in _PERIOD_END_ALIASES:
+        return freq
+    renamed = match.group(1) + _PERIOD_END_ALIASES[match.group(2).upper()]
+    try:
+        to_offset(renamed)
+    except ValueError:
+        return freq  # pandas < 2.2 only knows the old alias
+    return renamed
+
+
 def _resample_grouped(
     df: pd.DataFrame,
     freq: str,
-    value_cols: List[str],
-    agg: str = "last",
+    agg: Dict[str, str],
 ) -> pd.DataFrame:
     """Resample time-series data grouped by sim_id.
 
     Args:
         df: DataFrame with sim_id, date, and value columns.
         freq: Pandas frequency string (e.g. 'W', 'M').
-        value_cols: Columns to aggregate.
-        agg: Aggregation method.
+        agg: Aggregation method for each value column.
     """
+    value_cols = list(agg)
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"])
+    freq = _resolve_frequency(freq)
     resampled = (
         df.groupby("sim_id")[["date"] + value_cols]
         .apply(lambda g: g.set_index("date")[value_cols].resample(freq).agg(agg))
         .reset_index()
     )
     return resampled
+
+
+def _load_variables(
+    path: str,
+    manifest: Dict,
+    variables: List[str],
+) -> Tuple[pd.DataFrame, Dict[str, str]]:
+    """Load variables from whichever file has them, compartments or transitions.
+
+    Returns the variables merged on (sim_id, date), and for each one how to
+    aggregate it when resampling: compartments are levels, so a period keeps
+    its last value, while transitions are flows, so a period sums them.
+    """
+    files = manifest.get("files", {})
+    sources = {}
+    for var in variables:
+        for file_key in ("compartments", "transitions"):
+            if var in files.get(file_key, {}).get("columns", {}):
+                sources[var] = file_key
+                break
+        else:
+            available = [
+                c
+                for file_key in ("compartments", "transitions")
+                for c in files.get(file_key, {}).get("columns", {})
+                if c.endswith("_total")
+            ]
+            raise ValueError(
+                f"Unknown variable '{var}'. Available: {', '.join(available)} "
+                "(and the per-group columns listed in the manifest)"
+            )
+
+    df = None
+    for file_key in ("compartments", "transitions"):
+        cols = [v for v in variables if sources[v] == file_key]
+        if not cols:
+            continue
+        part = load_bundle_dataframe(path, file_key, columns=["sim_id", "date"] + cols)
+        df = part if df is None else df.merge(part, on=["sim_id", "date"])
+
+    agg = {v: "last" if sources[v] == "compartments" else "sum" for v in variables}
+    return df, agg
 
 
 def _resolve_variables(
@@ -151,13 +213,12 @@ def _cmd_quantiles(
 
     manifest = load_bundle(path)
     variables = _resolve_variables(manifest, variables)
-    cols_to_load = ["sim_id", "date"] + variables
 
-    df = load_bundle_dataframe(path, "compartments", columns=cols_to_load)
+    df, agg = _load_variables(path, manifest, variables)
     df = _apply_time_slice(df, start, end)
 
     if resample:
-        df = _resample_grouped(df, resample, variables)
+        df = _resample_grouped(df, resample, agg)
 
     # Compute quantiles
     dates = sorted(df["date"].unique())
@@ -190,9 +251,8 @@ def _cmd_summary(
     """
     manifest = load_bundle(path)
     variables = _resolve_variables(manifest, variables)
-    cols_to_load = ["sim_id", "date"] + variables
 
-    df = load_bundle_dataframe(path, "compartments", columns=cols_to_load)
+    df, _ = _load_variables(path, manifest, variables)
     df = _apply_time_slice(df, start, end)
 
     result = {}
@@ -243,9 +303,8 @@ def _cmd_peak(
     """Find peak timing and magnitude for selected variables."""
     manifest = load_bundle(path)
     variables = _resolve_variables(manifest, variables)
-    cols_to_load = ["sim_id", "date"] + variables
 
-    df = load_bundle_dataframe(path, "compartments", columns=cols_to_load)
+    df, _ = _load_variables(path, manifest, variables)
     df = _apply_time_slice(df, start, end)
 
     result = {}

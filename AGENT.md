@@ -489,7 +489,9 @@ epydemix inspect <bundle> <command> [options]
 | `--round` | Decimal precision (default: 6). Use `--round 2` for compact output or `--round 10` to preserve very small values. | `--round 4` |
 | `--format` | Output format: `json` (default), `csv`, `tsv` | `--format csv` |
 
-`--start` and `--end` are applied **before** resampling. When omitted, the full simulation range is used. Variables default to all `_total` columns.
+`--start` and `--end` are applied **before** resampling. When omitted, the full simulation range is used. Variables default to all `_total` compartment columns.
+
+Variables can be compartment columns (e.g. `Infected_total`, prevalence) or transition columns (e.g. `Susceptible_to_Infected_total`, incidence), mixed freely in one `-v` list. When resampling, a compartment keeps its last value in each period and a transition is summed over the period, so `--resample W` on `Susceptible_to_Infected_total` gives weekly incidence.
 
 **When calling `inspect` from Python via subprocess**, use long-form flags so kwarg names map cleanly to `--flag` style. The one exception in the table above is `-q` — its long form is `--quantiles`:
 

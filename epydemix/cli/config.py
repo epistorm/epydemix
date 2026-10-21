@@ -643,9 +643,7 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
     # Parameters section
     params = config.get("parameters", {})
-    if "parameters" not in config:
-        warnings.append("No 'parameters' section — will use model defaults")
-    elif not isinstance(params, dict):
+    if "parameters" in config and not isinstance(params, dict):
         errors.append("'parameters' must be a mapping of parameter name to value")
         params = {}
 
@@ -663,6 +661,23 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
         if model is not None:
             compartments = list(model.compartments)
             _validate_predefined_parameters(model.parameter_registry, uses, errors)
+            # A parameter set by neither the parameters section nor a prior
+            # silently takes its default, so name each one and its value.
+            given = {
+                name
+                for section, name, _, _ in uses
+                if section in ("parameters", "calibration.priors")
+            }
+            unset = [
+                f"{spec.name} = {spec.default}"
+                for spec in model.parameter_registry
+                if spec.name not in given
+            ]
+            if unset:
+                warnings.append(
+                    f"No value given for {', '.join(unset)}; using the model default"
+                    f"{'s' if len(unset) > 1 else ''}"
+                )
     elif isinstance(model_cfg.get("compartments"), list):
         compartments = model_cfg["compartments"]
 
