@@ -165,6 +165,8 @@ This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) f
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) and open issues or pull requests on GitHub. For questions and general discussion, visit our [GitHub Discussions](https://github.com/epistorm/epydemix/discussions).
 
+See the [roadmap](https://github.com/orgs/epistorm/projects/2) for what's planned across epydemix, epydemix-data and the Web API, and open an issue to suggest something or to pick up an item.
+
 <a href="https://github.com/epistorm/epydemix/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=epistorm/epydemix" />
 </a>

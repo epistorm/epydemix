@@ -2,6 +2,12 @@
 
 First off, thank you for considering contributing to Epydemix!
 
+## Roadmap
+
+What's planned for epydemix, [epydemix-data](https://github.com/epistorm/epydemix-data) and the [Epydemix Web API](https://github.com/epistorm/epydemix-webapi) is on the [roadmap](https://github.com/orgs/epistorm/projects/2). Each item has a status (Backlog, Next, In progress, Done), the project it concerns, and a priority and size when decided.
+
+Roadmap items start as drafts. If you'd like to work on one, open an issue in the relevant repository (or comment on it, if it is already an issue) before you start: the item is then converted to that issue, where the discussion and progress continue. This avoids two people working on the same thing. To suggest something new, open an issue.
+
 ## Getting Started
 
 1.  Fork the repository on GitHub.
