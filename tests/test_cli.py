@@ -1460,6 +1460,25 @@ class TestCLICompare:
         assert "days_over" in data["r"]
         assert "threshold" in data["r"]["days_over"]
 
+    def test_compare_transition_variable(self, tmp_path):
+        bundle = _make_bundle(tmp_path, "r.epx")
+        var = "Susceptible_to_Infected_total"
+        result = CliRunner().invoke(
+            cli, ["compare", bundle, "-m", "peak,peak_date,final_value", "-v", var]
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)["r"]
+
+        flows = pd.read_parquet(
+            os.path.join(bundle, "transitions.parquet"), columns=["sim_id", var]
+        )
+        assert data["peak"]["variable"] == var
+        assert data["peak"]["median"] == pytest.approx(
+            flows.groupby("sim_id")[var].max().median()
+        )
+        assert data["peak_date"]["variable"] == var
+        assert data["final_value"]["variable"] == var
+
 
 # ---------------------------------------------------------------------------
 # Calibration config & CLI

@@ -637,6 +637,20 @@ def compare_bundles(
     for scenario_name, bundle_path in bundles.items():
         manifest = load_bundle(bundle_path)
         comp = load_bundle_dataframe(bundle_path, "compartments")
+        # Requested transition columns (e.g. incidence) live in another file
+        transition_cols = manifest.get("files", {}).get("transitions", {})
+        flows = [
+            v
+            for v in variables or []
+            if v not in comp.columns and v in transition_cols.get("columns", {})
+        ]
+        if flows:
+            comp = comp.merge(
+                load_bundle_dataframe(
+                    bundle_path, "transitions", columns=["sim_id", "date"] + flows
+                ),
+                on=["sim_id", "date"],
+            )
 
         scenario_result = {}
         for metric_name, metric_param in parsed_metrics:

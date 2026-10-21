@@ -804,7 +804,7 @@ epydemix compare baseline.epx early.epx late.epx \
 |---|---|
 | `-n, --names` | Comma-separated scenario names (same order as bundle arguments) |
 | `-m, --metrics` | Comma-separated metrics to compute |
-| `-v, --variables` | Variable name for variable-specific metrics |
+| `-v, --variables` | Variable name for variable-specific metrics (`peak`, `peak_date`, `days_over`, `final_value`): a compartment column such as `Infected_total`, or a transition column such as `Susceptible_to_Infected_total` for incidence |
 | `-b, --baseline` | Scenario name for delta computation |
 | `--round` | Decimal precision (default: 6) |
 
