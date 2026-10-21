@@ -1,6 +1,6 @@
 # Tutorials
 
-Twelve worked notebooks. They are shown here with their saved outputs; each has an
+Thirteen worked notebooks. They are shown here with their saved outputs; each has an
 **Open in Colab** button at the top if you want to run it yourself, and the sources are
 in the [tutorials folder on GitHub](https://github.com/epistorm/epydemix/tree/main/tutorials).
 
@@ -25,6 +25,10 @@ in the [tutorials folder on GitHub](https://github.com/epistorm/epydemix/tree/ma
 11. {doc}`11_Epistorm_Mix_Matrices`: contact matrices by sex and race/ethnicity
 12. {doc}`12_Predefined_Models`: predefined models and their modular extensions
 
+**Command line**
+
+13. {doc}`13_Command_Line_Interface`: the `epydemix` CLI, from YAML configs to scenarios, calibration, and projections
+
 ```{toctree}
 :maxdepth: 1
 :hidden:
@@ -41,4 +45,5 @@ in the [tutorials folder on GitHub](https://github.com/epistorm/epydemix/tree/ma
 10. Multiprocessing <10_Multiprocessing>
 11. Epistorm-Mix contact matrices <11_Epistorm_Mix_Matrices>
 12. Predefined models <12_Predefined_Models>
+13. Command-line interface <13_Command_Line_Interface>
 ```

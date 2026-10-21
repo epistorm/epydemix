@@ -87,6 +87,7 @@ We provide a series of tutorials to help you get started with **epydemix**.
 - [Tutorial 10](https://github.com/epistorm/epydemix/blob/main/tutorials/10_Multiprocessing.ipynb): Speeding up Simulations and Calibration with Multiprocessing
 - [Tutorial 11](https://github.com/epistorm/epydemix/blob/main/tutorials/11_Epistorm_Mix_Matrices.ipynb): Using Epistorm-Mix Contact Matrices (sex and race/ethnicity)
 - [Tutorial 12](https://github.com/epistorm/epydemix/blob/main/tutorials/12_Predefined_Models.ipynb): Predefined Epidemic Models — Backbones and Modular Extensions
+- [Tutorial 13](https://github.com/epistorm/epydemix/blob/main/tutorials/13_Command_Line_Interface.ipynb): The Command-Line Interface — Scenarios, Calibration, and Projections from YAML Configs
 
 You can run all tutorials directly in Google Colab — just open any notebook in the [tutorials](./tutorials) folder and click the **“Open in Colab”** button at the top.
 

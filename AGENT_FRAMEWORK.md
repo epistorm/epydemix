@@ -42,3 +42,4 @@ Every command prints structured JSON to stdout and diagnostics to stderr, so res
 
 - **[AGENT.md](AGENT.md)** — the full reference: every CLI command, the complete YAML config format, and the output bundle structure. This is the contract an LLM agent reads before driving epydemix.
 - **[AGENT_EXAMPLES.md](AGENT_EXAMPLES.md)** — visualization recipes and end-to-end workflow examples.
+- **[Tutorial 13](tutorials/13_Command_Line_Interface.ipynb)** — a notebook walkthrough of the CLI: discovery, validation, scenarios, calibration, and projections.

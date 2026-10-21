@@ -186,6 +186,9 @@ epydemix-data-vtest
 # framework outputs
 studies/
 
+# Configs and bundles written when running the CLI tutorial
+tutorials/cli_tutorial/
+
 # Local scratch notebooks and experiments
 sandbox/
 
