@@ -126,12 +126,17 @@ Epydemix also ships a CLI for driving simulations programmatically — designed 
 ```bash
 pip install "epydemix[agent]"
 
-epydemix models                                  # discover available models
-epydemix run config.yaml --output results.epx    # run a YAML-configured simulation
-epydemix inspect results.epx peak -v I_total     # query results as compact JSON
+epydemix models                                       # discover available models
+epydemix run config.yaml --output results.epx         # run a YAML-configured simulation
+epydemix inspect results.epx peak -v Infected_total   # query results as compact JSON
 ```
 
 See [AGENT_FRAMEWORK.md](AGENT_FRAMEWORK.md) for an overview and quick start, [AGENT.md](AGENT.md) for the full CLI and config reference, and [AGENT_EXAMPLES.md](AGENT_EXAMPLES.md) for worked examples.
+
+---
+## Web API
+
+The [Epydemix Web API](https://github.com/epistorm/epydemix-webapi) is a REST API for running epydemix simulations over HTTP: run a simulation from a JSON request, list populations and their contact matrices, and browse model presets. Each request can also be exported as an equivalent, runnable Python script. See its [documentation and API reference](https://epydemix-webapi.vercel.app/docs).
 
 ---
 ## Citation 
