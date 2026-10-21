@@ -78,6 +78,26 @@ def test_mape(sample_data):
     assert mape(observed, perfect) == 0
 
 
+def test_mape_with_zero_observations():
+    """Zero observations are excluded with a warning instead of giving inf or nan"""
+    observed = {"data": np.array([0.0, 10.0, 20.0, 0.0])}
+    simulated = {"data": np.array([3.0, 11.0, 18.0, 0.0])}
+
+    with pytest.warns(UserWarning, match="2 of 4 observed values are zero"):
+        result = mape(observed, simulated)
+    assert result == pytest.approx(np.mean([1 / 10, 2 / 20]))
+
+    # All observations zero: the metric is undefined
+    with pytest.raises(ValueError, match="all observed values are zero"):
+        mape({"data": np.zeros(3)}, {"data": np.ones(3)})
+
+
+def test_mape_without_zero_observations_does_not_warn(sample_data, recwarn):
+    observed, simulated = sample_data
+    mape(observed, simulated)
+    assert len(recwarn) == 0
+
+
 def test_wmape(sample_data):
     """Test Weighted Mean Absolute Percentage Error calculation"""
     observed, simulated = sample_data

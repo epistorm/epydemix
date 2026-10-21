@@ -5,7 +5,14 @@ matplotlib.use("Agg")  # Use non-GUI backend before importing pyplot
 
 import numpy as np
 
-from epydemix.model.epimodel import EpiModel, stochastic_simulation
+import epydemix.model.epimodel as epimodel_module
+from epydemix.model.epimodel import (
+    EpiModel,
+    compute_mediated_transition_rate,
+    compute_spontaneous_transition_rate,
+    simulate,
+    stochastic_simulation,
+)
 from epydemix.population import Population
 from epydemix.utils.utils import apply_initial_conditions
 
@@ -90,6 +97,313 @@ def test_transition_management(basic_model):
     # Test clearing transitions
     basic_model.clear_transitions()
     assert len(basic_model.transitions_list) == 0
+
+
+def test_add_transition_unknown_kind(basic_model):
+    """An unregistered transition kind fails when the transition is added"""
+    basic_model.add_compartments(["S", "I"])
+
+    with pytest.raises(ValueError, match="Unknown transition kind: 'mediatd'"):
+        basic_model.add_transition("S", "I", "mediatd", ("beta", "I"))
+    assert basic_model.transitions_list == []
+    assert basic_model.transitions_idx == {}
+
+    # A custom kind is accepted once registered
+    def custom_rate(params, data):
+        return params
+
+    with pytest.raises(ValueError, match="Unknown transition kind: 'custom'"):
+        basic_model.add_transition("S", "I", "custom", 0.1)
+    basic_model.register_transition_kind("custom", custom_rate)
+    basic_model.add_transition("S", "I", "custom", 0.1)
+    assert basic_model.n_transitions == 1
+
+
+def test_clear_transitions_resets_transitions_idx(basic_model):
+    """Clearing transitions and adding different ones must leave a usable model"""
+    basic_model.add_compartments(["S", "I", "R"])
+    basic_model.add_parameter("beta", 0.3)
+    basic_model.add_parameter("gamma", 0.1)
+    basic_model.add_transition("S", "I", "mediated", ("beta", "I"))
+    basic_model.add_transition("I", "R", "spontaneous", "gamma")
+
+    basic_model.clear_transitions()
+    assert basic_model.transitions_idx == {}
+    assert basic_model.transitions == {"S": [], "I": [], "R": []}
+
+    # Re-add in a different order: indices must follow the new transitions
+    basic_model.add_transition("I", "R", "spontaneous", "gamma")
+    basic_model.add_transition("S", "I", "mediated", ("beta", "I"))
+    assert basic_model.transitions_idx == {"I_to_R": 0, "S_to_I": 1}
+
+    results = basic_model.run_simulations(
+        start_date="2020-01-01", end_date="2020-03-01", Nsim=1, rng=1
+    )
+    trajectory = results.trajectories[0]
+    # Every infection in S_to_I leaves S; a swapped index would break this
+    s_total = trajectory.compartments["S_total"]
+    initial_s = basic_model.create_default_initial_conditions()["S"].sum()
+    assert trajectory.transitions["S_to_I_total"].sum() == initial_s - s_total[-1]
+
+    # A different set of transitions must not keep stale names around
+    basic_model.clear_transitions()
+    basic_model.add_transition("S", "R", "spontaneous", "gamma")
+    results = basic_model.run_simulations(
+        start_date="2020-01-01",
+        end_date="2020-01-10",
+        initial_conditions_dict={"S": basic_model.population.Nk.copy()},
+        Nsim=1,
+        rng=1,
+    )
+    transition_names = {
+        name.rsplit("_", 1)[0] for name in results.trajectories[0].transitions
+    }
+    assert transition_names == {"S_to_R"}
+
+
+def test_clear_compartments_clears_transitions(basic_model):
+    """Clearing compartments must also drop the transitions that refer to them"""
+    basic_model.add_compartments(["S", "I", "R"])
+    basic_model.add_transition("S", "I", "mediated", ("beta", "I"))
+
+    basic_model.clear_compartments()
+    assert basic_model.transitions == {}
+    assert basic_model.transitions_list == []
+    assert basic_model.transitions_idx == {}
+
+
+def test_add_duplicate_compartments_raises(basic_model):
+    """Adding a compartment twice must fail without changing the model"""
+    basic_model.add_compartments(["S", "I"])
+
+    with pytest.raises(ValueError, match="already in the model: I"):
+        basic_model.add_compartments(["I", "R"])
+    with pytest.raises(ValueError, match="already in the model: R"):
+        basic_model.add_compartments(["R", "R"])
+
+    assert basic_model.compartments == ["S", "I"]
+    assert basic_model.compartments_idx == {"S": 0, "I": 1}
+
+
+def test_default_initial_conditions_without_mediated_transitions(basic_model):
+    """Defaults cannot be inferred without mediated transitions: fail with a clear error"""
+    basic_model.add_compartments(["S", "R"])
+    basic_model.add_parameter("gamma", 0.1)
+
+    with pytest.raises(ValueError, match="initial_conditions_dict"):
+        basic_model.create_default_initial_conditions()
+
+    basic_model.add_transition("S", "R", "spontaneous", "gamma")
+    with pytest.raises(ValueError, match="initial_conditions_dict"):
+        basic_model.create_default_initial_conditions()
+    with pytest.raises(RuntimeError, match="initial_conditions_dict"):
+        basic_model.run_simulations(
+            start_date="2020-01-01", end_date="2020-01-10", Nsim=1
+        )
+
+    # Explicit initial conditions still work
+    results = basic_model.run_simulations(
+        start_date="2020-01-01",
+        end_date="2020-01-10",
+        initial_conditions_dict={"S": basic_model.population.Nk.copy()},
+        Nsim=1,
+        rng=1,
+    )
+    assert results.Nsim == 1
+
+
+def _two_strain_free_model():
+    """S -> E driven by two infectious compartments (I and A), as in SEIAR"""
+    model = EpiModel(
+        compartments=["S", "E", "I", "A", "R"],
+        parameters={"beta": 0.3, "r": 0.5, "eps": 0.2, "p": 0.4, "mu": 0.1},
+    )
+    model.add_transition("S", "E", "mediated", ("beta", "I"))
+    model.add_transition("S", "E", "mediated", ("beta * r", "A"))
+    model.add_transition("E", "I", "spontaneous", "eps * (1 - p)")
+    model.add_transition("E", "A", "spontaneous", "eps * p")
+    model.add_transition("I", "R", "spontaneous", "mu")
+    model.add_transition("A", "R", "spontaneous", "mu")
+    return model
+
+
+def test_remove_transition_by_agent():
+    """One of several transitions between the same compartments can be removed"""
+    model = _two_strain_free_model()
+    idx_before = dict(model.transitions_idx)
+
+    removed = model.remove_transition("S", "E", agent="A")
+    assert [tr.params for tr in removed] == [("beta * r", "A")]
+    assert model.n_transitions == 5
+    assert [tr.params for tr in model.transitions["S"]] == [("beta", "I")]
+    # S -> E still exists, so names and indices are unchanged
+    assert model.transitions_idx == idx_before
+
+    results = model.run_simulations(
+        start_date="2020-01-01", end_date="2020-02-01", Nsim=1, rng=1
+    )
+    assert "S_to_E_total" in results.trajectories[0].transitions
+
+
+def test_remove_transition_all_matches():
+    """Without filters every transition between the two compartments is removed"""
+    model = _two_strain_free_model()
+
+    removed = model.remove_transition("S", "E")
+    assert len(removed) == 2
+    assert model.transitions["S"] == []
+    assert model.n_transitions == 4
+    assert model.transitions_idx == {"E_to_I": 0, "E_to_A": 1, "I_to_R": 2, "A_to_R": 3}
+
+    # The remaining transitions still simulate and S_to_E is gone from the output
+    initial_conditions = {
+        "S": model.population.Nk - 100,
+        "E": np.full_like(model.population.Nk, 100),
+    }
+    results = model.run_simulations(
+        start_date="2020-01-01",
+        end_date="2020-02-01",
+        initial_conditions_dict=initial_conditions,
+        Nsim=1,
+        rng=1,
+    )
+    transitions = results.trajectories[0].transitions
+    assert "S_to_E_total" not in transitions
+    assert transitions["E_to_I_total"].sum() + transitions["E_to_A_total"].sum() > 0
+
+
+def test_remove_transition_by_kind_and_errors():
+    model = _two_strain_free_model()
+
+    with pytest.raises(ValueError, match="No transition found from 'S' to 'R'"):
+        model.remove_transition("S", "R")
+    with pytest.raises(ValueError, match="agent='R'"):
+        model.remove_transition("S", "E", agent="R")
+    with pytest.raises(ValueError, match="kind='spontaneous'"):
+        model.remove_transition("S", "E", kind="spontaneous")
+    assert model.n_transitions == 6
+
+    assert len(model.remove_transition("E", "I", kind="spontaneous")) == 1
+    assert model.n_transitions == 5
+
+
+def test_remove_compartment():
+    """Removing a compartment drops its transitions, including those it mediates"""
+    model = _two_strain_free_model()
+
+    removed = model.remove_compartment("A")
+    assert sorted((tr.source, tr.target) for tr in removed) == [
+        ("A", "R"),
+        ("E", "A"),
+        ("S", "E"),
+    ]
+    assert model.compartments == ["S", "E", "I", "R"]
+    assert model.compartments_idx == {"S": 0, "E": 1, "I": 2, "R": 3}
+    assert "A" not in model.transitions
+    assert [tr.params for tr in model.transitions["S"]] == [("beta", "I")]
+    assert model.transitions_idx == {"S_to_E": 0, "E_to_I": 1, "I_to_R": 2}
+
+    with pytest.raises(ValueError, match="'A' is not in the model"):
+        model.remove_compartment("A")
+
+    # Same seed, same results as the model built directly without the compartment
+    reference = EpiModel(
+        compartments=["S", "E", "I", "R"],
+        parameters={"beta": 0.3, "r": 0.5, "eps": 0.2, "p": 0.4, "mu": 0.1},
+    )
+    reference.add_transition("S", "E", "mediated", ("beta", "I"))
+    reference.add_transition("E", "I", "spontaneous", "eps * (1 - p)")
+    reference.add_transition("I", "R", "spontaneous", "mu")
+
+    kwargs = dict(start_date="2020-01-01", end_date="2020-03-01", rng=5)
+    _assert_same_trajectory(simulate(model, **kwargs), simulate(reference, **kwargs))
+
+
+def test_copy_is_independent():
+    """Changes to a copy do not reach the original, and the other way round"""
+
+    def custom_rate(params, data):
+        return params
+
+    model = _two_strain_free_model()
+    model.register_transition_kind("custom", custom_rate)
+    model.add_intervention("all", "2020-02-01", "2020-03-01", reduction_factor=0.5)
+    model.override_parameter("2020-02-01", "2020-03-01", "mu", 0.2)
+    model.add_parameter("beta", np.linspace(0.2, 0.4, 61))
+    model.run_simulations(start_date="2020-01-01", end_date="2020-03-01", Nsim=1)
+
+    clone = model.copy()
+    assert clone is not model
+    assert clone.name == model.name
+    assert model.copy(name="scenario").name == "scenario"
+    assert clone.compartments == model.compartments
+    assert clone.transitions_idx == model.transitions_idx
+    assert clone.transition_functions["custom"] is custom_rate
+    # Caches left by the last run are not carried over
+    assert clone.Cs == {} and clone.definitions == {}
+    assert model.Cs != {} and model.definitions != {}
+
+    # The copy has its own transitions, shared consistently between its containers
+    assert clone.transitions_list[0] is not model.transitions_list[0]
+    assert clone.transitions["S"][0] is clone.transitions_list[0]
+
+    # Change everything on the copy
+    clone.parameters["beta"][:] = 9.0
+    clone.add_parameter("mu", 0.9)
+    clone.add_compartments("D")
+    clone.add_transition("I", "D", "custom", 0.01)
+    clone.remove_transition("S", "E", agent="A")
+    clone.transitions_list[0].params = ("mu", "I")
+    clone.add_intervention("all", "2020-01-10", "2020-01-20", reduction_factor=0.1)
+    clone.interventions[0]["reduction_factor"] = 0.0
+    clone.override_parameter("2020-01-05", "2020-01-10", "mu", 0.3)
+    clone.overrides["mu"][0]["value"] = 0.0
+    clone.population.Nk[:] = 1
+    clone.population.contact_matrices["all"][:] = 0.0
+
+    reference = _two_strain_free_model()
+    assert model.compartments == reference.compartments
+    assert "D" not in model.transitions
+    assert model.transitions_idx == reference.transitions_idx
+    assert [tr.params for tr in model.transitions_list] == [
+        tr.params for tr in reference.transitions_list
+    ]
+    np.testing.assert_array_equal(model.parameters["beta"], np.linspace(0.2, 0.4, 61))
+    assert model.parameters["mu"] == 0.1
+    assert len(model.interventions) == 1
+    assert model.interventions[0]["reduction_factor"] == 0.5
+    assert len(model.overrides["mu"]) == 1 and model.overrides["mu"][0]["value"] == 0.2
+    np.testing.assert_array_equal(model.population.Nk, reference.population.Nk)
+    np.testing.assert_array_equal(
+        model.population.contact_matrices["all"],
+        reference.population.contact_matrices["all"],
+    )
+
+    # ... and changes to the original do not reach a copy
+    clone = model.copy()
+    model.add_parameter("mu", 0.5)
+    model.clear_interventions()
+    assert clone.parameters["mu"] == 0.1
+    assert len(clone.interventions) == 1
+
+
+def test_copy_gives_same_results():
+    """An unmodified copy simulates exactly like the original"""
+    model = _two_strain_free_model()
+    model.add_intervention("all", "2020-02-01", "2020-03-01", reduction_factor=0.5)
+    model.override_parameter("2020-02-01", "2020-03-01", "mu", 0.2)
+    clone = model.copy()
+
+    kwargs = dict(start_date="2020-01-01", end_date="2020-04-01", rng=11)
+    _assert_same_trajectory(simulate(model, **kwargs), simulate(clone, **kwargs))
+
+    # A scenario on the copy changes the copy only
+    clone.add_parameter("beta", 0.6)
+    scenario, baseline = simulate(clone, **kwargs), simulate(model, **kwargs)
+    assert not np.array_equal(
+        scenario.compartments["R_total"], baseline.compartments["R_total"]
+    )
+    _assert_same_trajectory(baseline, simulate(model.copy(), **kwargs))
 
 
 def test_parameter_management(basic_model):
@@ -408,3 +722,96 @@ def test_stochastic_simulation_duplicate_transition_pair_not_double_counted(
     susceptible_start = initial_conditions[susceptible_idx, :].sum()
     susceptible_end = compartments_evolution[-1, susceptible_idx].sum()
     assert np.isclose(susceptible_start - susceptible_end, total_inflow)
+
+
+def _expression_model(transmission="beta * (1 - eff)", recovery="gamma * 1"):
+    """SIR model on 3 groups whose rates can be given as expressions or parameter names"""
+    model = EpiModel(
+        compartments=["S", "I", "R"],
+        parameters={"beta": 0.3, "eff": 0.0, "gamma": 0.1},
+    )
+    model.add_transition("S", "I", "mediated", (transmission, "I"))
+    model.add_transition("I", "R", "spontaneous", recovery)
+
+    population = Population()
+    population.add_population([1000, 2000, 3000])
+    population.add_contact_matrix(np.ones((3, 3)))
+    model.set_population(population)
+    return model
+
+
+def _assert_same_trajectory(trajectory_a, trajectory_b):
+    for name in ("compartments", "transitions"):
+        values_a, values_b = getattr(trajectory_a, name), getattr(trajectory_b, name)
+        assert values_a.keys() == values_b.keys()
+        for key in values_a:
+            np.testing.assert_array_equal(values_a[key], values_b[key])
+
+
+def test_expression_rates_evaluated_once_per_simulation(monkeypatch):
+    """Each distinct expression is evaluated once per simulation, not once per step"""
+    calls = []
+    original_evaluate = epimodel_module.evaluate
+
+    def counting_evaluate(expr, env):
+        calls.append(expr)
+        return original_evaluate(expr=expr, env=env)
+
+    monkeypatch.setattr(epimodel_module, "evaluate", counting_evaluate)
+
+    model = _expression_model()
+    model.run_simulations(start_date="2020-01-01", end_date="2020-03-01", Nsim=3, rng=1)
+    assert sorted(calls) == sorted(["beta * (1 - eff)", "gamma * 1"] * 3)
+
+
+def test_expression_rates_match_plain_parameters():
+    """An expression rate gives exactly the results of the equivalent parameter"""
+    kwargs = dict(start_date="2020-01-01", end_date="2020-04-01", rng=7)
+
+    # Time-varying beta and an override on eff, so the expression changes over time
+    beta = np.linspace(0.2, 0.5, 92)
+    override = dict(start_date="2020-02-01", end_date="2020-02-20", value=0.6)
+
+    expression_model = _expression_model()
+    expression_model.add_parameter("beta", beta)
+    expression_model.override_parameter(parameter_name="eff", **override)
+
+    plain_model = _expression_model(transmission="rate", recovery="gamma")
+    eff = np.where((np.arange(92) >= 31) & (np.arange(92) <= 50), 0.6, 0.0)
+    plain_model.add_parameter("rate", beta * (1 - eff))
+
+    _assert_same_trajectory(
+        simulate(expression_model, **kwargs), simulate(plain_model, **kwargs)
+    )
+
+
+def test_expression_rates_follow_parameters_of_each_run():
+    """Expression values are not carried over between runs with different parameters"""
+    kwargs = dict(start_date="2020-01-01", end_date="2020-04-01", rng=7)
+    expression_model = _expression_model()
+    plain_model = _expression_model(transmission="beta", recovery="gamma")
+
+    low = simulate(expression_model, beta=0.2, **kwargs)
+    high = simulate(expression_model, beta=0.6, **kwargs)
+
+    _assert_same_trajectory(low, simulate(plain_model, beta=0.2, **kwargs))
+    _assert_same_trajectory(high, simulate(plain_model, beta=0.6, **kwargs))
+    assert not np.array_equal(low.compartments["I_total"], high.compartments["I_total"])
+
+
+def test_rate_functions_without_expression_cache():
+    """The rate functions still work when called directly with a plain data dictionary"""
+    data = {
+        "parameters": {"beta": np.full((5, 2), 0.3), "eff": np.full((5, 2), 0.5)},
+        "t": 2,
+        "comp_indices": {"S": 0, "I": 1},
+        "contact_matrix": {"overall": np.ones((2, 2))},
+        "pop": np.array([[90.0, 80.0], [10.0, 20.0]]),
+        "pop_sizes": np.array([100.0, 100.0]),
+    }
+    rate = compute_spontaneous_transition_rate("beta * (1 - eff)", data)
+    np.testing.assert_allclose(rate, [0.15, 0.15])
+
+    rate = compute_mediated_transition_rate(("beta * (1 - eff)", "I"), data)
+    np.testing.assert_allclose(rate, [0.15 * 0.3, 0.15 * 0.3])
+    assert "expression_cache" not in data

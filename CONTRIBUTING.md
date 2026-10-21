@@ -50,3 +50,15 @@ To run the tests, use the following command:
 pytest
 ```
 
+## Documentation
+
+The documentation is in `docs/source/` (Markdown, built with Sphinx and the Furo theme) and is published on [Read the Docs](https://epydemix.readthedocs.io/). The tutorial notebooks in `tutorials/` are included in the site with their saved outputs; they are not re-run during the build, so re-run and save a notebook when its outputs should change.
+
+To build the documentation locally:
+
+```bash
+pip install -e ".[docs]"
+sphinx-build -b html -W --keep-going docs/source docs/build/html
+```
+
+Then open `docs/build/html/index.html`. The `-W` flag turns warnings into errors, as on Read the Docs and in CI.

@@ -573,3 +573,14 @@ def test_load_predefined_model_guard_rails():
         load_predefined_model("SIR", outcome="unknown")
     with pytest.raises(ValueError):
         load_predefined_model("SEIRX")
+
+
+def test_sis_vaccination_default_initial_conditions():
+    """SIS + vaccination must start with nobody vaccinated"""
+    model = load_predefined_model("SIS", vaccination=True)
+    ic = model.create_default_initial_conditions()
+    total = model.population.Nk.sum()
+
+    assert ic["Vaccinated"].sum() == 0
+    assert ic["Infected"].sum() > 0
+    assert ic["Susceptible"].sum() == total - ic["Infected"].sum()

@@ -26,6 +26,19 @@ jobs:
         run: ruff format --check .
       - name: Run ruff
         run: ruff check .
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install ".[docs]"
+      - name: Build documentation
+        run: sphinx-build -b html -W --keep-going docs/source docs/build/html
   test:
     needs: lint
     strategy:

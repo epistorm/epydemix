@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.4.0] - 2026-10-12
+
+### Added
+
+* `SimulationResults.to_dataframe(variables=None)` returns all trajectories as one tidy (long) DataFrame with columns `sim_id`, `date`, `variable` and `value`, one row per simulation, date and variable. Compartments and transitions are both included under their usual names (e.g. `I_total`, `S_to_I_total`); `variables` selects a subset and unknown names raise a `ValueError`.
+* `EpiModel.copy(name=None)` returns an independent copy of the model for scenario comparisons: compartments, parameters, overrides, transitions, interventions, registered transition kinds and the population are all copied, so changes to the copy never affect the original. An unmodified copy gives the same results as the original for the same seed.
+* `EpiModel.remove_transition(source, target, kind=None, agent=None)` removes transitions between two compartments and returns them. A model can have several transitions between the same pair (e.g. `SEIAR`'s `Susceptible → Exposed`, mediated once by `Infected` and once by `Asymptomatic`): by default all are removed, and `kind` and/or `agent` (the mediating compartment) narrow the selection. Raises a `ValueError` if nothing matches.
+* `EpiModel.remove_compartment(compartment)` removes a compartment together with every transition that leaves it, enters it, or is mediated by it, and returns the removed transitions. Remaining compartments and transitions are renumbered. Transitions of custom kinds that refer to the compartment only through their `params` cannot be detected and must be removed explicitly.
+
+### Changed
+
+* **Redesigned documentation.** The [Read the Docs site](https://epydemix.readthedocs.io/) now uses the Furo theme and is organised as a user guide (models, populations, simulations, interventions, calibration, plotting), the twelve tutorials rendered inside the site with their saved outputs, and a curated API reference in place of the raw module listing. Sources moved from reStructuredText to Markdown in `docs/source/`. Documentation dependencies are now the `docs` extra (`pip install "epydemix[docs]"`), replacing `docs/requirements.txt`; the build fails on warnings on Read the Docs and in a new CI job. Docstrings of `ABCSampler.calibrate`, `Population`, `plot_posterior_distribution` and `plot_distance_distribution` were reformatted so they render correctly (no behavior change).
+* Rates written as expressions (e.g. `"beta * (1 - eff)"`) are now evaluated once per simulation instead of once per time step. Previously `compute_spontaneous_transition_rate` and `compute_mediated_transition_rate` deep-copied all parameter arrays and evaluated the expression for every time step at each step, only to keep one row, so the cost grew with the square of the run length. Results are unchanged: outputs are bit-for-bit identical for the same seed, and each `simulate()` call still evaluates expressions with its own parameters, so calibration is unaffected. The one behavioral difference: a custom transition function (registered via `register_transition_kind`) that modifies `data["parameters"]` in the middle of a run no longer affects expression rates for the rest of that run. The new helper `evaluate_rate_expression` in `epimodel.py` holds this logic; calling the rate functions directly with a `data` dictionary that has no `"expression_cache"` key behaves as before.
+
+* `EpiModel.add_transition()` now raises a `ValueError` when `kind` is not a registered transition kind (e.g. a typo such as `"mediatd"`), listing the registered kinds. Previously the mistake only surfaced when running a simulation, often with an unrelated error message. Custom kinds must now be registered with `register_transition_kind` *before* the transitions that use them are added.
+
+### Fixed
+
+* `EpiModel.clear_transitions()` now also resets `transitions_idx`. Previously the old transition names and indices survived the clear, so adding a different set of transitions afterwards made `run_simulations` fail with `RuntimeError: Simulation failed: index N is out of bounds for axis 1 ...`.
+* `EpiModel.clear_compartments()` now also clears the model's transitions, which referred to the removed compartments.
+* `EpiModel.add_compartments()` now raises a `ValueError` when a compartment is already in the model (or repeated in the same call), instead of silently adding a duplicate that left `compartments` and `compartments_idx` out of sync.
+* `EpiModel.create_default_initial_conditions()` now raises a clear `ValueError` asking for `initial_conditions_dict` when the model has no `mediated` transitions (e.g. a spontaneous-only model, or one using only custom transition kinds). Previously it failed with `max() arg is an empty sequence`.
+* Default initial conditions for `load_predefined_model("SIS", vaccination=True)` no longer split the non-infected population evenly between `Susceptible` and `Vaccinated`; everyone who is not infected now starts in `Susceptible`. The fallback used when every mediated source has an inflow now also discards candidates that are fed by another candidate. Simulations of this model that relied on the default initial conditions will give different results.
+* `evaluate()` in `utils.py` no longer appends `"Mult"` and `"Pow"` to evalidate's shared `base_eval_model.nodes` list on every call. It is called once per time step for every rate written as an expression (e.g. `"beta * (1 - eff)"`), so the list grew without bound within a process (about 6 MB per 1,000 one-year simulations with one expression rate) and `*` / `**` became permanently allowed for any other code using evalidate's default model. `evaluate()` now uses a private copy of the model built once at import. Accepted expressions and simulation results are unchanged.
+* `mape` in `calibration/metrics.py` no longer returns `inf` or `nan` when some observed values are zero (common for early incidence data). Those points are now excluded from the average with a warning, and a `ValueError` is raised if all observed values are zero. Results are unchanged for data without zeros.
+
+---
+
+## [1.3.2] - 2026-07-29
+
+### Changed
+
+* **Reproducible ABC-SMC calibration.** `ABCSampler` now accepts an `rng` argument (an `int` seed or `np.random.Generator`) that governs *all* calibration randomness — prior sampling, perturbation kernel proposals, and posterior resampling — not just the underlying simulation. Previously, only `simulate()`/`EpiModel.run_simulations()` accepted an `rng`; the ABC-SMC layer itself (`sample_prior`, `Perturbation.propose`, particle resampling in `_run_smc_generation` and `run_projections`) drew from the unseeded global `np.random` state, so two calibration runs with an identically-seeded simulation could still diverge. `Perturbation.propose()` (and its `DefaultPerturbationContinuous`/`DefaultPerturbationDiscrete` implementations) and `sample_prior()` now take an optional `rng` parameter accordingly; this is a signature change for any custom `Perturbation` subclass.
+* `ABCSampler.run_projections()` now accepts its own optional `rng` argument. Precedence for the seed source is: this call's `rng=`, then an `"rng"` key in `parameters`, then the sampler's own `rng` (so seeding the `ABCSampler` already makes its projections reproducible by default). Each of the `iterations` trajectories gets an independent child generator spawned (via `SeedSequence.spawn_key`) from that seed, so trajectories don't share a single advancing stream, and two `run_projections` calls given the same seed draw the same paired posterior samples.
+* `EpiModel.run_simulations()`, `simulate()`, `stochastic_simulation()`, and `multinomial()` now accept an integer seed directly for `rng` (in addition to an `np.random.Generator`), via `np.random.default_rng(rng)`.
+
+### Fixed
+
+* `run_projections` no longer breaks on NumPy < 1.25, where `BitGenerator.seed_seq` is not yet a public attribute; it now falls back to the private `_seed_seq` when the public accessor is unavailable.
+
+---
+
 ## [1.3.1] - 2026-07-02
 
 ### Fixed

@@ -298,12 +298,28 @@ class EpiModel:
         Args:
             compartments (list or object): A list of compartments or a single compartment to be added.
 
+        Raises:
+            ValueError: If a compartment is already in the model or is repeated in the input.
+
         Returns:
             None
         """
         # Ensure we are always working with a list, even if a single compartment is passed
         if not isinstance(compartments, (list, tuple)):
             compartments = [compartments]
+
+        # Reject duplicates, which would leave compartments and compartments_idx out of sync
+        duplicates = list(
+            dict.fromkeys(
+                comp
+                for i, comp in enumerate(compartments)
+                if comp in self.compartments_idx or comp in compartments[:i]
+            )
+        )
+        if duplicates:
+            raise ValueError(
+                f"These compartments are already in the model: {', '.join(map(str, duplicates))}"
+            )
 
         # Add compartments to the model
         self.compartments.extend(compartments)
@@ -328,12 +344,47 @@ class EpiModel:
     def clear_compartments(self) -> None:
         """
         This method resets the `compartments` list and clears the `compartments_idx` dictionary.
+        Transitions are cleared as well, since they refer to compartments that no longer exist.
 
         Returns:
             None
         """
         self.compartments = []
         self.compartments_idx = {}
+        self.clear_transitions()
+
+    def remove_compartment(self, compartment: str) -> List[Transition]:
+        """
+        Removes a compartment from the model, together with every transition that involves it:
+        transitions leaving it, entering it, and mediated transitions in which it is the agent.
+
+        Transitions of custom kinds that refer to the compartment only through their `params`
+        cannot be detected and must be removed with `remove_transition`.
+
+        Args:
+            compartment (str): The compartment to remove.
+
+        Raises:
+            ValueError: If the compartment is not in the model.
+
+        Returns:
+            List[Transition]: The transitions removed along with the compartment.
+        """
+        if compartment not in self.compartments_idx:
+            raise ValueError(f"Compartment '{compartment}' is not in the model.")
+
+        removed = [
+            tr
+            for tr in self.transitions_list
+            if compartment in (tr.source, tr.target)
+            or self._transition_agent(tr) == compartment
+        ]
+        self._drop_transitions(removed)
+
+        self.compartments.remove(compartment)
+        del self.transitions[compartment]
+        self.compartments_idx = {comp: i for i, comp in enumerate(self.compartments)}
+        return removed
 
     def add_parameter(
         self,
@@ -465,11 +516,13 @@ class EpiModel:
         Args:
             source (str): The source compartment of the transition.
             target (str): The target compartment of the transition.
-            kind (str): The kind of transition (e.g., spontaneous or mediated).
+            kind (str): The kind of transition (e.g., spontaneous or mediated). Custom kinds must be
+                registered with `register_transition_kind` before being used here.
             params (Any): The parameters involved in the transition.
 
         Raises:
-            ValueError: If the source or target is not in the compartments list.
+            ValueError: If the source or target is not in the compartments list, or if the kind
+                is not a registered transition kind.
 
         Returns:
             None
@@ -480,6 +533,12 @@ class EpiModel:
         if missing_compartments:
             raise ValueError(
                 f"These compartments are not in the compartments list: {', '.join(missing_compartments)}"
+            )
+
+        if kind not in self.transition_functions:
+            raise ValueError(
+                f"Unknown transition kind: '{kind}'. Registered kinds are: {list(self.transition_functions)}. "
+                "Use register_transition_kind to add a custom kind before adding the transition."
             )
 
         transition = Transition(source=source, target=target, kind=kind, params=params)
@@ -513,14 +572,87 @@ class EpiModel:
         """
         Clears all transitions from the model.
 
-        This method resets the `transitions_list` and reinitializes the `transitions` dictionary,
-        clearing all existing transitions while keeping the structure intact for each compartment.
+        This method resets the `transitions_list` and `transitions_idx` and reinitializes the
+        `transitions` dictionary, clearing all existing transitions while keeping the structure
+        intact for each compartment.
 
         Returns:
             None
         """
         self.transitions_list = []
+        self.transitions_idx = {}
         self.transitions = {comp: [] for comp in self.compartments}
+
+    def remove_transition(
+        self,
+        source: str,
+        target: str,
+        kind: Optional[str] = None,
+        agent: Optional[str] = None,
+    ) -> List[Transition]:
+        """
+        Removes the transitions going from `source` to `target`.
+
+        A model can have several transitions between the same two compartments (e.g. infection
+        mediated by two different infectious compartments). By default all of them are removed;
+        use `kind` and/or `agent` to remove only some.
+
+        Args:
+            source (str): The source compartment of the transitions.
+            target (str): The target compartment of the transitions.
+            kind (str, optional): Only remove transitions of this kind (e.g. "mediated").
+            agent (str, optional): Only remove mediated transitions whose agent (the compartment
+                mediating the transition, e.g. "I" in params=("beta", "I")) is this compartment.
+
+        Raises:
+            ValueError: If no transition matches.
+
+        Returns:
+            List[Transition]: The removed transitions.
+        """
+        removed = [
+            tr
+            for tr in self.transitions_list
+            if tr.source == source
+            and tr.target == target
+            and (kind is None or tr.kind == kind)
+            and (agent is None or self._transition_agent(tr) == agent)
+        ]
+        if not removed:
+            filters = "".join(
+                f", {name}='{value}'"
+                for name, value in (("kind", kind), ("agent", agent))
+                if value is not None
+            )
+            raise ValueError(
+                f"No transition found from '{source}' to '{target}'{filters}."
+            )
+
+        self._drop_transitions(removed)
+        return removed
+
+    @staticmethod
+    def _transition_agent(transition: Transition) -> Optional[str]:
+        """Returns the agent compartment of a mediated transition, None for other kinds."""
+        if transition.kind == "mediated":
+            return transition.params[1]
+        return None
+
+    def _drop_transitions(self, to_remove: List[Transition]) -> None:
+        """Removes the given transitions and renumbers `transitions_idx` accordingly."""
+        removed_ids = {id(tr) for tr in to_remove}
+        self.transitions_list = [
+            tr for tr in self.transitions_list if id(tr) not in removed_ids
+        ]
+        for comp in self.transitions:
+            self.transitions[comp] = [
+                tr for tr in self.transitions[comp] if id(tr) not in removed_ids
+            ]
+        # A name stays as long as one transition between the two compartments remains
+        names = dict.fromkeys(
+            f"{tr.source}_to_{tr.target}" for tr in self.transitions_list
+        )
+        self.transitions_idx = {name: i for i, name in enumerate(names)}
 
     def add_intervention(
         self,
@@ -668,7 +800,15 @@ class EpiModel:
 
         Returns:
             dict: A dictionary with initial conditions for each compartment, with values as arrays representing different age groups.
+
+        Raises:
+            ValueError: If the model has no mediated transitions, since the defaults are inferred from them.
         """
+        if not any(tr.kind == "mediated" for tr in self.transitions_list):
+            raise ValueError(
+                "Default initial conditions are inferred from 'mediated' transitions, but the model has none. "
+                "Please provide initial_conditions_dict explicitly."
+            )
 
         population = self.population.Nk
 
@@ -702,7 +842,9 @@ class EpiModel:
         # Fallback for models where every mediated source also has inflow (e.g. SIRS,
         # where R→S makes Susceptible a target of a spontaneous transition).
         # Use the mediated source with the most outgoing mediated transitions, breaking
-        # ties by preferring compartments that are not targets of mediated transitions.
+        # ties by preferring compartments that are not targets of mediated transitions,
+        # then compartments that are not fed by another candidate (e.g. SIS with
+        # vaccination, where Susceptible→Vaccinated rules out Vaccinated).
         # This reliably selects Susceptible as the residual population holder.
         if not source_compartments:
             from collections import Counter
@@ -716,9 +858,15 @@ class EpiModel:
             ]
             # Prefer candidates not targeted by mediated transitions
             non_mediated_targets = [c for c in candidates if c not in mediated_targets]
-            source_compartments = (
-                non_mediated_targets if non_mediated_targets else candidates
-            )
+            candidates = non_mediated_targets if non_mediated_targets else candidates
+            # Prefer candidates not fed by another candidate
+            fed_by_candidate = {
+                tr.target
+                for tr in self.transitions_list
+                if tr.source in candidates and tr.source != tr.target
+            }
+            not_fed = [c for c in candidates if c not in fed_by_candidate]
+            source_compartments = not_fed if not_fed else candidates
 
         # Total number of agent compartments
         num_agent_compartments = len(agent_compartments)
@@ -774,6 +922,33 @@ class EpiModel:
         """
         self.population = population
 
+    def copy(self, name: Optional[str] = None) -> "EpiModel":
+        """
+        Returns an independent copy of the model, e.g. to compare scenarios.
+
+        Compartments, parameters, overrides, transitions, interventions, registered transition
+        kinds and the population are all copied, so changing the copy never affects the original
+        (and vice versa).
+
+        Args:
+            name (str, optional): The name of the copy. Defaults to the name of the original.
+
+        Returns:
+            EpiModel: The copied model.
+
+        Example:
+            >>> baseline = load_predefined_model("SIR")
+            >>> lockdown = baseline.copy(name="lockdown")
+            >>> lockdown.add_intervention("work", "2020-03-01", "2020-05-01", reduction_factor=0.3)
+        """
+        # Cs and definitions are rebuilt at every simulation: start the copy with empty ones
+        # instead of duplicating what the last run left behind
+        memo = {id(self.Cs): {}, id(self.definitions): {}}
+        new_model = copy.deepcopy(self, memo)
+        if name is not None:
+            new_model.name = name
+        return new_model
+
     def run_simulations(
         self,
         start_date: Union[str, pd.Timestamp] = "2020-01-01",
@@ -787,7 +962,7 @@ class EpiModel:
         resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
         fill_method: Optional[str] = "ffill",
         apply_linear_approximation: bool = False,
-        rng: Optional[np.random.Generator] = None,
+        rng: Optional[Union[int, np.random.Generator]] = None,
     ) -> SimulationResults:
         """
         Simulates the epidemic model multiple times over the given time period.
@@ -804,7 +979,7 @@ class EpiModel:
             resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
             fill_method (str, optional): Method to fill NaN values after resampling. Default is "ffill".
             apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
-            rng (np.random.Generator, optional): Random number generator. Default is None.
+            rng (int or np.random.Generator, optional): Seed or random number generator. Default is None.
 
         Returns:
             SimulationResults: An object containing all simulation trajectories.
@@ -813,8 +988,7 @@ class EpiModel:
             RuntimeError: If the simulation fails.
         """
 
-        if rng is None:
-            rng = np.random.default_rng()
+        rng = np.random.default_rng(rng)
 
         # Run multiple simulations and collect trajectories
         try:
@@ -865,7 +1039,7 @@ def simulate(
     resample_aggregation_transitions: Optional[Union[str, dict]] = "sum",
     fill_method: Optional[str] = "ffill",
     apply_linear_approximation: bool = False,
-    rng: Optional[np.random.Generator] = None,
+    rng: Optional[Union[int, np.random.Generator]] = None,
     contact_matrices: Optional[List[Dict[str, np.ndarray]]] = None,
     simulation_dates: Optional[List[pd.Timestamp]] = None,
     **kwargs,
@@ -885,7 +1059,7 @@ def simulate(
         resample_aggregation_transitions (str, optional): The aggregation method to use when resampling the transitions. Default is "sum".
         fill_method (str, optional): The method to use when filling NaN values after resampling. Default is "ffill".
         apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
-        rng (np.random.Generator, optional): Random number generator. Default is None.
+        rng (int or np.random.Generator, optional): Seed or random number generator. Default is None.
         contact_matrices (list, optional): A list of contact matrices for the simulation. Default is None.
         simulation_dates (list, optional): A list of simulation dates. Default is None.
         **kwargs: Additional parameters to overwrite model parameters during the simulation.
@@ -896,8 +1070,7 @@ def simulate(
     Raises:
         ValueError: If the model has no transitions defined.
     """
-    if rng is None:
-        rng = np.random.default_rng()
+    rng = np.random.default_rng(rng)
 
     # check that the model has transitions
     if len(epimodel.transitions_list) == 0:
@@ -986,7 +1159,7 @@ def stochastic_simulation(
     initial_conditions: np.ndarray,
     dt: float,
     apply_linear_approximation: bool = False,
-    rng: Optional[np.random.Generator] = None,
+    rng: Optional[Union[int, np.random.Generator]] = None,
 ) -> np.ndarray:
     """
     Run a stochastic simulation of the epidemic model.
@@ -999,10 +1172,9 @@ def stochastic_simulation(
         initial_conditions: Initial population distribution
         dt: Time step size
         apply_linear_approximation (bool, optional): Whether to use linear approximation to the probabilities. Default is False.
-        rng (np.random.Generator, optional): Random number generator. Default is None.
+        rng (int or np.random.Generator, optional): Seed or random number generator. Default is None.
     """
-    if rng is None:
-        rng = np.random.default_rng()
+    rng = np.random.default_rng(rng)
 
     # Pre-allocate arrays
     N = len(epimodel.population.Nk)
@@ -1031,6 +1203,9 @@ def stochastic_simulation(
         "pop_sizes": pop_sizes,
         "dt": dt,
         "source": None,
+        # Rates written as expressions are evaluated once per simulation and reused
+        # at every time step (see evaluate_rate_expression)
+        "expression_cache": {},
     }
 
     # Simulate each time step
@@ -1110,6 +1285,32 @@ def stochastic_simulation(
     return compartments_evolution[1:], transitions_evolution
 
 
+def evaluate_rate_expression(expr: str, data: Dict) -> np.ndarray:
+    """
+    Evaluate a rate written as an expression of the model parameters (e.g. "beta * (1 - eff)").
+
+    The parameters are fixed for the whole simulation, so the result (one row per time step)
+    does not depend on the current step. When `data` has an "expression_cache" dictionary, as
+    set up by `stochastic_simulation`, each expression is evaluated once per simulation and
+    reused at every step. Without it, the expression is evaluated at every call.
+
+    Args:
+        expr: The expression to evaluate.
+        data: A dictionary containing the data needed for the transition.
+            - parameters: The model parameters
+            - expression_cache (optional): Expressions already evaluated in this simulation
+
+    Returns:
+        The evaluated expression for all time steps
+    """
+    cache = data.get("expression_cache")
+    if cache is None:
+        return evaluate(expr=expr, env=copy.deepcopy(data["parameters"]))
+    if expr not in cache:
+        cache[expr] = evaluate(expr=expr, env=copy.deepcopy(data["parameters"]))
+    return cache[expr]
+
+
 def compute_spontaneous_transition_rate(params, data):
     """
     Compute the rate of a spontaneous transition.
@@ -1127,8 +1328,7 @@ def compute_spontaneous_transition_rate(params, data):
         parameters = data["parameters"]
         if params in parameters:
             return parameters[params][t]
-        env_copy = copy.deepcopy(parameters)
-        return evaluate(expr=params, env=env_copy)[t]
+        return evaluate_rate_expression(params, data)[t]
     else:
         return params
 
@@ -1153,7 +1353,7 @@ def compute_mediated_transition_rate(params, data):
         if params[0] in parameters:
             rate_eval = parameters[params[0]][t]
         else:
-            rate_eval = evaluate(expr=params[0], env=copy.deepcopy(parameters))[t]
+            rate_eval = evaluate_rate_expression(params[0], data)[t]
     else:
         rate_eval = params[0]
     agent_idx = data["comp_indices"][params[1]]

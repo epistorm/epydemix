@@ -48,36 +48,39 @@ contacts_age_group_mapping_mistry = {
 
 class Population:
     """
-     Represents a population for epidemiological modeling, including demographic data and contact matrices.
+    Represents a population for epidemiological modeling, including demographic data and contact matrices.
 
-     The `Population` class manages and stores population data, including demographic distributions and contact matrices
-     for various layers (e.g., school, work, home, community). It provides methods to add and retrieve this data for use
-     in simulations and analysis.
+    The `Population` class manages and stores population data, including demographic distributions and contact matrices
+    for various layers (e.g., school, work, home, community). It provides methods to add and retrieve this data for use
+    in simulations and analysis.
 
-     Attributes:
-         name (str): The name of the population.
-         Nk (List): List representing population data for different demographic groups.
-         Nk_names (List[str]): List of demographic group names.
-         contact_matrices (Dict[str, np.ndarray]): Dictionary mapping layer names to their corresponding contact matrices
-             (aggregated by age groups).
+    Attributes:
+        name (str): The name of the population.
+        Nk (List): List representing population data for different demographic groups.
+        Nk_names (List[str]): List of demographic group names.
+        contact_matrices (Dict[str, np.ndarray]): Dictionary mapping layer names to their corresponding contact matrices
+            (aggregated by age groups).
 
-    Example 1: Online import (data will be fetched from GitHub)
-     population_online = load_epydemix_population(
-         population_name="United_States",
-         # Specify the preferred contact data source (needed only if you want to override the default primary source)
-         contacts_source="mistry_2021",
-         layers=["home", "work", "school", "community"]  # Load contact layers (by default all layers are imported)
-     )
+    Example:
+        Online import (data will be fetched from GitHub)::
 
-     Example 2: Offline import (data will be loaded from a local directory)
-     # Ensure that the folder is downloaded locally before running this
-     population_offline = load_epydemix_population(
-         population_name="United_States",
-         path_to_data="path/to/local/epydemix_data/",  # Path to the local data folder
-         # Specify the preferred contact data source (needed only if you want to override the default primary source)
-         contacts_source="mistry_2021",
-         layers=["home", "work", "school", "community"]  # Load contact layers (by default all layers are imported)
-     )
+            population_online = load_epydemix_population(
+                population_name="United_States",
+                # Specify the preferred contact data source (needed only if you want to override the default primary source)
+                contacts_source="mistry_2021",
+                layers=["home", "work", "school", "community"],  # Load contact layers (by default all layers are imported)
+            )
+
+        Offline import (data will be loaded from a local directory; ensure that the folder is downloaded
+        locally before running this)::
+
+            population_offline = load_epydemix_population(
+                population_name="United_States",
+                path_to_data="path/to/local/epydemix_data/",  # Path to the local data folder
+                # Specify the preferred contact data source (needed only if you want to override the default primary source)
+                contacts_source="mistry_2021",
+                layers=["home", "work", "school", "community"],  # Load contact layers (by default all layers are imported)
+            )
     """
 
     def __init__(self, name: str = "population") -> None:
@@ -86,12 +89,6 @@ class Population:
 
         Args:
             name (str, optional): Name of the population object. Defaults to "population".
-
-        Attributes:
-            name (str): Name of the population.
-            contact_matrices (Dict[str, np.ndarray]): Dictionary to hold contact matrices for different layers.
-            Nk (List[float]): List representing population data for different demographic groups.
-            Nk_names (List[str]): List of demographic group names.
         """
         self.name = name
         self.contact_matrices = {}  # Dictionary of contact matrices for different layers

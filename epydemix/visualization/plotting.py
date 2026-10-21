@@ -210,15 +210,8 @@ def plot_posterior_distribution(
         stat: Statistic to plot ('count', 'density', 'probability')
         bins: Number of bins or method for histogram
         alpha: Transparency of the plot
-        vertical_lines: Dict of vertical lines to add, format:
-            {
-                'name': {
-                    'x': value,
-                    'color': 'color',
-                    'linestyle': '--',
-                    'label': 'label'
-                }
-            }
+        vertical_lines: Dict of vertical lines to add, mapping a name to the line's settings, e.g.
+            ``{'name': {'x': value, 'color': 'color', 'linestyle': '--', 'label': 'label'}}``
         **kwargs: Additional arguments passed to plotting functions
 
     Returns:
@@ -885,15 +878,8 @@ def plot_distance_distribution(
         stat: Statistic to plot for histogram ('count', 'density', 'probability')
         bins: Number of bins or method for histogram
         alpha: Transparency of the plot
-        vertical_lines: Dict of vertical lines to add, format:
-            {
-                'name': {
-                    'x': value,
-                    'color': 'color',
-                    'linestyle': '--',
-                    'label': 'label'
-                }
-            }
+        vertical_lines: Dict of vertical lines to add, mapping a name to the line's settings, e.g.
+            ``{'name': {'x': value, 'color': 'color', 'linestyle': '--', 'label': 'label'}}``
         **kwargs: Additional arguments passed to plotting functions
 
     Returns:
