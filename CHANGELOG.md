@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.5.0] - 2026-10-21
+
+### Added
+
+* **Agent framework: the `epydemix` command-line tool.** Installed with `pip install "epydemix[agent]"`, it runs the whole workflow from files, so that an LLM agent or any automated pipeline can drive epydemix without reading source code or keeping Python objects in memory. It is just as usable by hand. Commands:
+  * discovery: `models`, `schema` (a model's parameters as JSON Schema, or `--format describe`), `defaults` (literature-based parameter sets for COVID-19, influenza and measles), `populations`;
+  * `validate`, `run`, `calibrate` and `project`, all driven by a YAML (or JSON) config. A config can inherit from another with `base:`, which makes scenario sweeps short;
+  * `inspect` (`manifest`, `peak`, `summary`, `quantiles`, `posterior`, `fit`) and `compare` (attack rate, peak, peak date, deaths, days over a threshold, final value, with differences from a baseline).
+
+  Every command prints JSON to stdout and diagnostics to stderr. The validator checks content as well as structure: parameter names (suggesting the closest one when misspelled) and ranges, parameters a model would silently ignore or leave at their defaults, compartment names in initial conditions, dates, and the transitions of custom models. `run`, `calibrate` and `project` refuse an invalid config. [`AGENT.md`](AGENT.md) is the reference written for agents, [`AGENT_EXAMPLES.md`](AGENT_EXAMPLES.md) adds plotting recipes and worked examples, and [`AGENT_FRAMEWORK.md`](AGENT_FRAMEWORK.md) is an overview for people. The framework is described in a [preprint](https://arxiv.org/abs/2609.28692).
+* **Result bundles** (`epydemix.io`). `run`, `calibrate` and `project` save their results as `.epx` folders: Parquet files (trajectories, or posterior, distances, weights and fitted trajectories for a calibration), a `manifest.json` with the column schema of every file and the provenance of the bundle, the config that produced it, and a `figures/` folder. Every run is seeded, and the seed is recorded in the manifest and in the stored config, so re-running a bundle's `config.yaml` reproduces it exactly. `epydemix.io` provides `save_bundle`, `load_bundle`, `load_bundle_dataframe`, `add_figure_to_manifest`, `inspect_bundle` and `compare_bundles`, and `SimulationResults.save()` / `CalibrationResults.save()` (with matching `load()`) save results from Python.
+* **Parameter registry** (`epydemix.parameters`). `ParameterSpec` and `ParameterRegistry` describe a model's parameters: meaning, units, valid range, default. The predefined models and their modules register theirs, available as `EpiModel.parameter_registry`; `EpiModel.register_parameter_spec()` adds one to a custom model.
+* **`scheduled` transition kind**, for flows driven by a given number of doses per day and group, such as a vaccination campaign: `rate = min(doses / source, 0.999)`, or, with a list of eligible compartments that also receive doses, `min(doses / eligible, 0.999)`.
+* **Tutorial 13**, a walkthrough of the command-line interface on one question (how the timing of a reduction in transmission changes a COVID-like epidemic in Italy), including calibration and projection.
+* **Documentation**: a "Command line and AI agents" page in the user guide, an API page for `epydemix.io`, and the agent framework preprint on the citing page.
+* New optional dependency groups: `io` (`pyarrow`, for bundles), and `cli` / `agent` (`pyarrow`, `click`, `pyyaml`, for the command-line tool; the two are identical). The `epydemix` console script is installed with the package.
+
+### Changed
+
+* The `docs` extra now includes `pyarrow`, needed to document `epydemix.io`.
+
+---
+
 ## [1.4.0] - 2026-10-12
 
 ### Added
