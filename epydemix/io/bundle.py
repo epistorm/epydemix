@@ -49,6 +49,9 @@ def save_bundle(
     from ..calibration.calibration_results import CalibrationResults
     from ..model.simulation_results import SimulationResults
 
+    if isinstance(results, SimulationResults) and not results.trajectories:
+        raise ValueError("Cannot save empty SimulationResults: it has no trajectories")
+
     path = Path(path)
     if path.exists() and (path / "manifest.json").exists():
         print(

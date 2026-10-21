@@ -5,7 +5,6 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Dict, Optional
 
 import numpy as np
-import pandas as pd
 
 
 def _get_version() -> str:
@@ -29,25 +28,6 @@ def _scalar_params(params: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def _describe_columns(df: pd.DataFrame) -> Dict[str, Dict[str, str]]:
-    """Build column schema from a DataFrame."""
-    cols = {}
-    for col in df.columns:
-        dtype = str(df[col].dtype)
-        if "int" in dtype:
-            dtype_str = "int32"
-        elif "float" in dtype:
-            dtype_str = "float64"
-        elif "datetime" in dtype or "date" in dtype:
-            dtype_str = "date"
-        elif "object" in dtype:
-            dtype_str = "string"
-        else:
-            dtype_str = dtype
-        cols[col] = {"dtype": dtype_str}
-    return cols
-
-
 def build_simulation_manifest(
     results,  # SimulationResults
     bundle_path: str,
@@ -62,10 +42,7 @@ def build_simulation_manifest(
         config: Optional config dict that produced this run.
         file_sizes: Optional dict of filename → size_mb.
     """
-    if not results.trajectories:
-        raise ValueError("Cannot build manifest from empty SimulationResults")
-
-    traj0 = results.trajectories[0]
+    traj0 = results.trajectories[0]  # save_bundle rejects empty results
     dates = traj0.dates
     comp_names = list(traj0.compartments.keys())
     trans_names = list(traj0.transitions.keys())

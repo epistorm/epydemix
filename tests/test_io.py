@@ -2,15 +2,19 @@
 
 import json
 import os
+from datetime import date, datetime
 
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import stats
 
-from epydemix import load_predefined_model
+from epydemix import load_predefined_model, simulate
+from epydemix.calibration import ABCSampler, CalibrationResults, rmse
 from epydemix.io.bundle import load_bundle, load_bundle_dataframe, save_bundle
 from epydemix.io.inspect import inspect_bundle
 from epydemix.io.json_utils import NumpySafeEncoder, to_json
+from epydemix.io.manifest import _scalar_params
 from epydemix.model.simulation_results import SimulationResults
 from epydemix.population import Population
 
@@ -81,6 +85,28 @@ class TestJsonUtils:
         result = to_json(data, precision=2)
         parsed = json.loads(result)
         assert parsed["value"] == 3.14
+
+    def test_numpy_encoder_dates_and_series(self):
+        data = {
+            "datetime": datetime(2023, 1, 1, 12, 30),
+            "date": date(2023, 1, 2),
+            "series": pd.Series([1, 2]),
+        }
+        parsed = json.loads(json.dumps(data, cls=NumpySafeEncoder))
+        assert parsed == {
+            "datetime": "2023-01-01",
+            "date": "2023-01-02",
+            "series": [1, 2],
+        }
+
+    def test_numpy_encoder_rejects_unknown_types(self):
+        with pytest.raises(TypeError):
+            json.dumps({"value": object()}, cls=NumpySafeEncoder)
+
+    def test_to_json_rounds_nested_numpy_values(self):
+        data = {"values": [np.float32(1.23456), np.array([[1.11111, 2.22222]])]}
+        parsed = json.loads(to_json(data, precision=2))
+        assert parsed["values"] == [1.23, [1.11, 2.22]]
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +219,70 @@ class TestBundleSaveLoad:
     def test_invalid_type_raises(self, tmp_path):
         with pytest.raises(TypeError, match="Expected SimulationResults"):
             save_bundle("not a result", str(tmp_path / "bad.epx"))
+
+    def test_empty_results_raise(self, tmp_path):
+        with pytest.raises(ValueError, match="empty SimulationResults"):
+            save_bundle(SimulationResults([], {}), str(tmp_path / "empty.epx"))
+
+    def test_manifest_keeps_scalar_parameters_only(self):
+        params = {
+            "rate": 0.3,
+            "n": np.int64(5),
+            "x": np.float32(0.5),
+            "label": "a",
+            "matrix": np.ones((2, 2)),
+        }
+        assert _scalar_params(params) == {"rate": 0.3, "n": 5, "x": 0.5, "label": "a"}
+
+
+class TestCalibrationBundle:
+    @pytest.fixture
+    def calibration_results(self, simple_population):
+        model = load_predefined_model("SIR")
+        model.set_population(simple_population)
+        params = {
+            "epimodel": model,
+            "start_date": "2023-01-01",
+            "end_date": "2023-01-20",
+            "recovery_rate": 0.1,
+        }
+
+        def simulate_incidence(p):
+            results = simulate(**p)
+            return {"data": results.transitions["Susceptible_to_Infected_total"]}
+
+        observed = simulate_incidence({**params, "transmission_rate": 0.3, "rng": 0})
+        sampler = ABCSampler(
+            simulation_function=simulate_incidence,
+            priors={"transmission_rate": stats.uniform(0.1, 0.4)},
+            parameters=params,
+            observed_data=observed["data"],
+            distance_function=rmse,
+            rng=1,
+        )
+        return sampler.calibrate(strategy="top_fraction", Nsim=10, top_fraction=0.5)
+
+    def test_save_and_load(self, calibration_results, tmp_path):
+        path = str(tmp_path / "calibration.epx")
+        config = {
+            "population": {
+                "name": "Italy",
+                "size": 1000,
+                "contact_layers": ["home", "work"],
+            },
+            "calibration": {"target_variable": "Susceptible_to_Infected_total"},
+        }
+        saved = calibration_results.save(path, config=config)
+        loaded = CalibrationResults.load(path)
+
+        assert loaded == json.loads(json.dumps(saved, cls=NumpySafeEncoder))
+        assert loaded["type"] == "CalibrationResults"
+        assert loaded["population"] == config["population"]
+        assert loaded["calibration"]["target_variable"] == (
+            "Susceptible_to_Infected_total"
+        )
+        posterior = load_bundle_dataframe(path, "posterior")
+        assert "transmission_rate" in posterior.columns
 
 
 # ---------------------------------------------------------------------------
