@@ -1,3 +1,6 @@
+> [!NOTE]
+> **This is a frozen snapshot of the `agent-framework` branch**, as cited in the agent framework preprint. The branch was merged into `main` (PR [#26](https://github.com/epistorm/epydemix/pull/26)) and released in v1.5.0. For the current code and docs, see [main](https://github.com/epistorm/epydemix) and [AGENT_FRAMEWORK.md](https://github.com/epistorm/epydemix/blob/main/AGENT_FRAMEWORK.md).
+
 # Epydemix, the ABC of Epidemics
 [![GitHub stars](https://img.shields.io/github/stars/epistorm/epydemix.svg?style=social)](https://github.com/epistorm/epydemix/stargazers)
 [![PyPI Downloads](https://static.pepy.tech/badge/epydemix)](https://pepy.tech/projects/epydemix)
