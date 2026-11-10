@@ -739,7 +739,9 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
                             f"must be a whole number of individuals, got {v}"
                         )
             elif isinstance(val, bool) or not isinstance(val, (int, float)):
-                errors.append(f"initial_conditions[{comp!r}] must be a number or a dict")
+                errors.append(
+                    f"initial_conditions[{comp!r}] must be a number or a dict"
+                )
             elif val < 0:
                 errors.append(f"initial_conditions[{comp!r}] must not be negative")
         errors.extend(_check_ic_normalization(ic_cfg))

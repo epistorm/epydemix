@@ -751,7 +751,13 @@ class TestInitialConditionRounding:
         assert state[model.compartments_idx["Infected"]].sum() == 5
         assert state.sum(axis=0).tolist() == NL_NK
         # matches the per-group workaround from the issue
-        assert ic["Susceptible"].tolist() == [889_623, 2_865_368, 6_946_649, 3_773_976, 3_689_932]
+        assert ic["Susceptible"].tolist() == [
+            889_623,
+            2_865_368,
+            6_946_649,
+            3_773_976,
+            3_689_932,
+        ]
 
     @pytest.mark.parametrize("seeds", [1, 2, 7, 13])
     def test_int_scalar_total_is_kept(self, seeds):
@@ -814,11 +820,23 @@ class TestInitialConditionRounding:
         model = _nl_model()
         cfg = {
             "initial_conditions": {
-                "Susceptible": {"unit": "count", "0-4": 889_623, "5-19": 2_865_368,
-                                "20-49": 6_946_649, "50-64": 3_773_976, "65+": 3_689_932},
+                "Susceptible": {
+                    "unit": "count",
+                    "0-4": 889_623,
+                    "5-19": 2_865_368,
+                    "20-49": 6_946_649,
+                    "50-64": 3_773_976,
+                    "65+": 3_689_932,
+                },
                 "Exposed": {"unit": "count", "default": 0},
-                "Infected": {"unit": "count", "default": 0, "5-19": 1, "20-49": 2,
-                             "50-64": 1, "65+": 1},
+                "Infected": {
+                    "unit": "count",
+                    "default": 0,
+                    "5-19": 1,
+                    "20-49": 2,
+                    "50-64": 1,
+                    "65+": 1,
+                },
                 "Recovered": {"unit": "count", "default": 0},
             }
         }
@@ -840,7 +858,11 @@ class TestInitialConditionRounding:
     @pytest.mark.parametrize("bad", [True, -5, "five"])
     def test_validate_rejects_bad_scalars(self, bad):
         cfg = dict(MINIMAL_CONFIG)
-        cfg["initial_conditions"] = {"Susceptible": 99_995, "Infected": bad, "Recovered": 0}
+        cfg["initial_conditions"] = {
+            "Susceptible": 99_995,
+            "Infected": bad,
+            "Recovered": 0,
+        }
         result = validate_config(cfg)
         assert not result["valid"]
 
