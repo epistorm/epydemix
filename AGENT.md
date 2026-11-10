@@ -212,6 +212,13 @@ simulation:
 # int scalar   → absolute number of individuals, distributed proportionally
 # dict         → per-group control (see below); add `unit: count` for counts
 #
+# Rounding: the simulation works with whole individuals. An int scalar is split
+# with largest-remainder rounding, so its total is kept exactly (Infected: 5
+# always starts 5 people). Fractions are rounded the same way. Each group is then
+# made to sum exactly to its size; any difference goes to the compartment with the
+# most people in that group (normally Susceptible). Counts in `unit: count` dicts
+# must be whole numbers. To control which groups receive seeds, give per-group counts.
+#
 initial_conditions:
   Susceptible: 0.999   # float → fraction
   Exposed: 0.0005

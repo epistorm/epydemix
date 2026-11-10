@@ -1,6 +1,7 @@
 import datetime
 import random
 import string
+import warnings
 from collections.abc import Iterable
 from typing import Any, Dict, List, Optional, Union
 
@@ -371,11 +372,68 @@ def apply_initial_conditions(epimodel, initial_conditions_dict) -> np.ndarray:
     )
     for comp in epimodel.compartments:
         if comp in initial_conditions_dict:
-            initial_conditions[epimodel.compartments_idx[comp]] = (
-                initial_conditions_dict[comp]
-            )
+            values = np.asarray(initial_conditions_dict[comp], dtype=float)
+            rounded = np.rint(values)
+            # Assigning floats into the int array would truncate toward zero
+            # silently (e.g. 0.99 -> 0); round to the nearest integer instead
+            # and tell the user when that changed anything.
+            if values.size and np.abs(values - rounded).max() > 1e-6:
+                warnings.warn(
+                    f"initial_conditions_dict[{comp!r}] has non-integer values "
+                    f"(sum {values.sum():.6g}); rounded to the nearest integers "
+                    f"(sum {int(rounded.sum())}). Pass integer counts to control "
+                    "how individuals are allocated.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            initial_conditions[epimodel.compartments_idx[comp]] = rounded.astype(int)
 
     return initial_conditions
+
+
+def round_preserving_sum(values, total: Optional[int] = None) -> np.ndarray:
+    """
+    Rounds non-negative values to integers while keeping their sum fixed.
+
+    Uses largest-remainder rounding: every value is floored, then the units
+    still missing to reach ``total`` are given, one each, to the entries with
+    the largest fractional parts (ties go to the lowest index).
+
+    Args:
+        values (array-like): Non-negative values to round.
+        total (int, optional): The sum the result must have. Defaults to the
+            sum of ``values`` rounded to the nearest integer.
+
+    Returns:
+        np.ndarray: Integer array with the same shape as ``values`` whose
+        entries differ from ``values`` by less than 1 and sum to ``total``.
+
+    Raises:
+        ValueError: If ``values`` contains negative or non-finite entries, or
+            if ``total`` cannot be reached by rounding each entry up or down.
+    """
+    arr = np.asarray(values, dtype=float)
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("round_preserving_sum: values must be finite")
+    if np.any(arr < 0):
+        raise ValueError("round_preserving_sum: values must be non-negative")
+
+    flat = arr.ravel()
+    floors = np.floor(flat)
+    if total is None:
+        total = int(np.rint(flat.sum()))
+    remainder = int(total) - int(floors.sum())
+    if remainder < 0 or remainder > flat.size:
+        raise ValueError(
+            f"round_preserving_sum: cannot round values summing to {flat.sum():.6g} "
+            f"to a total of {total}"
+        )
+
+    result = floors.astype(int)
+    if remainder:
+        order = np.argsort(-(flat - floors), kind="stable")
+        result[order[:remainder]] += 1
+    return result.reshape(arr.shape)
 
 
 def convert_to_2Darray(lst: List[Any]) -> np.ndarray:

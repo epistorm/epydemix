@@ -102,6 +102,11 @@ results = model.run_simulations(
 )
 ```
 
+The simulation works with whole individuals, so give whole numbers. Values that are not
+whole (for example `Nk * 1e-5`) are rounded to the nearest integer, with a warning, and
+rounding can change the totals. To seed an exact number of people, choose the count in
+each group yourself.
+
 Models without a mediated transition have no obvious default, so they need
 `initial_conditions_dict`.
 
