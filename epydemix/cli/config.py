@@ -201,6 +201,149 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+# Contact layers of the populations the CLI builds: the default population
+# has one "all" layer; a named population without ``contact_layers`` loads
+# these four.
+_DEFAULT_POPULATION_LAYERS = ["all"]
+_DEFAULT_NAMED_POPULATION_LAYERS = ["school", "work", "home", "community"]
+
+# What an intervention's factor means, shared by messages, schema and docs.
+INTERVENTION_FACTOR_HELP = (
+    "interventions[].reduction_factor multiplies the layer's contacts during the "
+    "window, as in EpiModel.add_intervention: 0.3 keeps 30% of contacts "
+    "(a 70% reduction), 0.0 removes them all, 1.0 changes nothing."
+)
+
+
+def _intervention_factor(intv: Dict[str, Any]) -> Any:
+    """The contact multiplier of an intervention.
+
+    ``reduction_factor`` is the field name; ``reduction`` is its deprecated
+    alias, with the same meaning (the share of contacts kept).
+    """
+    if "reduction_factor" in intv:
+        return intv["reduction_factor"]
+    return intv.get("reduction")
+
+
+def _population_layers(config: Dict[str, Any]) -> Optional[List[str]]:
+    """The contact layers the configured population will have, if known."""
+    pop_cfg = config.get("population") or {}
+    if not isinstance(pop_cfg, dict):
+        return None
+    name = pop_cfg.get("name")
+    if name is None or name == "default":
+        return list(_DEFAULT_POPULATION_LAYERS)
+    layers = pop_cfg.get("contact_layers")
+    if layers is None:
+        return list(_DEFAULT_NAMED_POPULATION_LAYERS)
+    if isinstance(layers, list):
+        return [str(layer) for layer in layers]
+    return None
+
+
+def _validate_interventions(
+    config: Dict[str, Any], errors: list, warnings: list
+) -> None:
+    """Check the ``interventions`` list.
+
+    Without this, a missing factor or an unknown layer surfaces only once a
+    run starts (as a bare ``KeyError`` for the layer), and a value written as
+    the share of contacts *removed* runs silently as its complement.
+    """
+    import datetime
+
+    import pandas as pd
+
+    interventions = config.get("interventions")
+    if interventions is None:
+        return
+    if not isinstance(interventions, list):
+        errors.append("interventions must be a list")
+        return
+
+    layers = _population_layers(config)
+    for i, intv in enumerate(interventions):
+        where = f"interventions[{i}]"
+        if not isinstance(intv, dict):
+            errors.append(f"{where} must be a mapping")
+            continue
+
+        # Layer
+        layer = intv.get("layer")
+        if layer is None:
+            errors.append(f"{where}.layer is required")
+        elif layers is not None and layer not in layers:
+            close = difflib.get_close_matches(str(layer), layers, n=1)
+            hint = f" Did you mean '{close[0]}'?" if close else ""
+            errors.append(
+                f"{where}.layer '{layer}' is not a contact layer of the population. "
+                f"Available layers: {', '.join(layers)}.{hint}"
+            )
+
+        # Dates
+        stamps = {}
+        for key in ("start_date", "end_date"):
+            raw = intv.get(key)
+            if raw is None:
+                errors.append(f"{where}.{key} is required")
+                continue
+            stamp = pd.NaT
+            if isinstance(raw, (str, datetime.date)):
+                try:
+                    stamp = pd.Timestamp(raw)
+                except (ValueError, TypeError):
+                    pass
+            if pd.isna(stamp):
+                errors.append(
+                    f"{where}.{key} {raw!r} is not a valid date; write it as YYYY-MM-DD"
+                )
+            else:
+                stamps[key] = stamp
+        if len(stamps) == 2 and stamps["start_date"] > stamps["end_date"]:
+            errors.append(f"{where}: start_date is after end_date")
+
+        # Factor
+        has_new, has_old = "reduction_factor" in intv, "reduction" in intv
+        if has_new and has_old:
+            errors.append(
+                f"{where} sets both 'reduction_factor' and 'reduction'; "
+                "use 'reduction_factor' only"
+            )
+            continue
+        if not has_new and not has_old:
+            errors.append(
+                f"{where}.reduction_factor is required. {INTERVENTION_FACTOR_HELP}"
+            )
+            continue
+        key = "reduction_factor" if has_new else "reduction"
+        factor = intv[key]
+        if not _is_number(factor):
+            errors.append(f"{where}.{key} must be a number, got {factor!r}")
+            continue
+        if has_old:
+            warnings.append(
+                f"{where}: 'reduction' is deprecated; rename it to "
+                f"'reduction_factor' (same meaning). Contacts are multiplied by "
+                f"it: {factor} keeps {factor:.0%} of contacts."
+            )
+        if factor < 0:
+            errors.append(
+                f"{where}.{key} must not be negative, got {factor}. "
+                f"{INTERVENTION_FACTOR_HELP}"
+            )
+        elif factor == 1:
+            warnings.append(
+                f"{where}.{key} is 1.0, so the intervention has no effect. "
+                f"{INTERVENTION_FACTOR_HELP}"
+            )
+        elif factor > 1:
+            warnings.append(
+                f"{where}.{key} is {factor}, which increases contacts by "
+                f"{factor - 1:.0%}. {INTERVENTION_FACTOR_HELP}"
+            )
+
+
 def _validate_simulation_window(sim_cfg: Dict[str, Any], errors: list) -> None:
     """Check the simulation dates, time step and replicate count.
 
@@ -746,6 +889,8 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
                 errors.append(f"initial_conditions[{comp!r}] must not be negative")
         errors.extend(_check_ic_normalization(ic_cfg))
 
+    _validate_interventions(config, errors, warnings)
+
     return {
         "valid": len(errors) == 0,
         "errors": errors,
@@ -920,7 +1065,7 @@ def build_model_from_config(
             layer_name=intv["layer"],
             start_date=intv["start_date"],
             end_date=intv["end_date"],
-            reduction_factor=intv.get("reduction"),
+            reduction_factor=_intervention_factor(intv),
         )
 
     # Parameter overrides (time-varying)

@@ -248,7 +248,7 @@ interventions:
   - layer: school
     start_date: "2020-03-10"
     end_date: "2020-06-01"
-    reduction: 0.9
+    reduction_factor: 0.1   # contacts multiplied by 0.1: keeps 10% (a 90% reduction)
 overrides:
   - parameter: transmission_rate
     start_date: "2020-03-22"
