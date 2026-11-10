@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+* **Initial conditions were truncated toward zero.** `apply_initial_conditions` wrote values into an integer array, so fractional values lost their decimals without any warning. In the CLI, an integer initial condition split across age groups lost people: `Infected: 5` on the Netherlands started every run with 3 infected people and none under 20, which made early extinction far more likely. The CLI now uses largest-remainder rounding, so an integer total is kept exactly, and makes each group sum to its size. In the Python API, non-integer values in `initial_conditions_dict` are rounded to the nearest integer with a `UserWarning` instead of being truncated. `epydemix validate` now rejects counts that are not whole numbers, negative values, and booleans in `initial_conditions`.
+
 ## [1.5.0] - 2026-10-21
 
 ### Added

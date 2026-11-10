@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from evalidate import base_eval_model
 
-from epydemix.utils.utils import evaluate, multinomial
+from epydemix.utils.utils import evaluate, multinomial, round_preserving_sum
 
 # A simple 3-compartment layout: index 0 is the 'stay' compartment, indices 1 and 2
 # are the two 'leave' destinations selected by the mask.
@@ -152,3 +152,50 @@ def test_evaluate_does_not_mutate_evalidate_base_model():
     assert base_eval_model.nodes == nodes_before
     assert "Mult" not in base_eval_model.nodes
     assert "Pow" not in base_eval_model.nodes
+
+
+# ---------------------------------------------------------------------------
+# round_preserving_sum
+# ---------------------------------------------------------------------------
+
+
+def test_round_preserving_sum_issue_vector():
+    """5 seeds split over the Netherlands age groups stay 5 (regression)."""
+    values = [0.245, 0.789, 1.912, 1.039, 1.016]
+    out = round_preserving_sum(values, total=5)
+    assert out.tolist() == [0, 1, 2, 1, 1]
+    assert np.issubdtype(out.dtype, np.integer)
+
+
+def test_round_preserving_sum_keeps_total_and_stays_within_one():
+    rng = np.random.default_rng(0)
+    for _ in range(1000):
+        n = rng.integers(1, 12)
+        total = int(rng.integers(0, 50))
+        weights = rng.random(n) + 1e-9
+        values = weights / weights.sum() * total
+        out = round_preserving_sum(values, total=total)
+        assert out.sum() == total
+        assert np.all(np.abs(out - values) < 1)
+        assert np.all(out >= 0)
+
+
+def test_round_preserving_sum_default_total_and_integers_unchanged():
+    assert round_preserving_sum([1.4, 1.4, 1.4]).sum() == 4  # round(4.2)
+    ints = np.array([3, 0, 7])
+    assert np.array_equal(round_preserving_sum(ints), ints)
+
+
+def test_round_preserving_sum_ties_go_to_lowest_index():
+    assert round_preserving_sum([0.5, 0.5, 0.5, 0.5], total=2).tolist() == [1, 1, 0, 0]
+
+
+@pytest.mark.parametrize("bad", [[-0.5, 1.0], [np.nan, 1.0], [np.inf, 1.0]])
+def test_round_preserving_sum_rejects_invalid(bad):
+    with pytest.raises(ValueError):
+        round_preserving_sum(bad)
+
+
+def test_round_preserving_sum_rejects_unreachable_total():
+    with pytest.raises(ValueError):
+        round_preserving_sum([0.5, 0.5], total=5)

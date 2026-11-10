@@ -633,6 +633,43 @@ def test_apply_initial_conditions_partial_dict(mock_epimodel):
     assert np.array_equal(initial_conditions[susceptible_idx], np.array([0, 0, 0]))
 
 
+def test_apply_initial_conditions_rounds_and_warns(mock_epimodel):
+    """Non-integer values are rounded to the nearest integer, not truncated, with a warning."""
+    with pytest.warns(UserWarning, match="Infected"):
+        ic = apply_initial_conditions(
+            mock_epimodel, {"Infected": np.array([0.4, 0.6, 2.7])}
+        )
+    infected_idx = mock_epimodel.compartments_idx["Infected"]
+    assert ic[infected_idx].tolist() == [0, 1, 3]
+
+
+def test_apply_initial_conditions_float_noise_not_truncated(mock_epimodel):
+    """A value that is a whole number up to float error is not truncated (0.9999999 -> 1)."""
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ic = apply_initial_conditions(
+            mock_epimodel, {"Infected": np.array([0.9999999, 2.0000001, 3.0])}
+        )
+    infected_idx = mock_epimodel.compartments_idx["Infected"]
+    assert ic[infected_idx].tolist() == [1, 2, 3]
+
+
+def test_apply_initial_conditions_integral_floats_do_not_warn(mock_epimodel):
+    """Whole-number floats (e.g. Nk - 10) and int arrays are accepted silently."""
+    import warnings
+
+    Nk = np.asarray(mock_epimodel.population.Nk, dtype=float)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ic = apply_initial_conditions(
+            mock_epimodel,
+            {"Susceptible": Nk - 10.0, "Infected": np.full(len(Nk), 10)},
+        )
+    assert ic.sum() == int(Nk.sum())
+
+
 def test_run_simulations_unknown_compartment_in_initial_conditions(mock_epimodel):
     """Test run_simulations surfaces a clear error for a mistyped initial_conditions_dict key"""
     with pytest.raises(RuntimeError, match="Susceptibl"):

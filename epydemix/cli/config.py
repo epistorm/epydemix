@@ -12,6 +12,7 @@ import numpy as np
 
 from ..model.epimodel import EpiModel
 from ..model.predefined_models import SUPPORTED_MODELS, load_predefined_model
+from ..utils.utils import round_preserving_sum
 
 # Default simulation counts when not specified in config
 DEFAULT_N_SIMULATIONS = 100
@@ -135,7 +136,7 @@ def _check_ic_normalization(ic_cfg: Dict[str, Any], tol: float = 1e-4) -> List[s
     """
     # Skip normalization check if any compartment uses count mode.
     for val in ic_cfg.values():
-        if isinstance(val, int):
+        if isinstance(val, int) and not isinstance(val, bool):
             return []
         if isinstance(val, dict) and val.get("unit") == "count":
             return []
@@ -720,12 +721,27 @@ def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
                         f"initial_conditions[{comp!r}]['unit'] must be 'fraction' or 'count'"
                     )
                 for k, v in val.items():
-                    if k in ("default", "unit"):
+                    if k == "unit":
                         continue
-                    if not isinstance(v, (int, float)):
+                    if isinstance(v, bool) or not isinstance(v, (int, float)):
+                        if k != "default" or v is not None:
+                            errors.append(
+                                f"initial_conditions[{comp!r}][{k!r}] must be a number"
+                            )
+                        continue
+                    if v < 0:
                         errors.append(
-                            f"initial_conditions[{comp!r}][{k!r}] must be a number"
+                            f"initial_conditions[{comp!r}][{k!r}] must not be negative"
                         )
+                    elif unit_val == "count" and float(v) != int(v):
+                        errors.append(
+                            f"initial_conditions[{comp!r}][{k!r}] is a count and "
+                            f"must be a whole number of individuals, got {v}"
+                        )
+            elif isinstance(val, bool) or not isinstance(val, (int, float)):
+                errors.append(f"initial_conditions[{comp!r}] must be a number or a dict")
+            elif val < 0:
+                errors.append(f"initial_conditions[{comp!r}] must not be negative")
         errors.extend(_check_ic_normalization(ic_cfg))
 
     return {
@@ -959,12 +975,24 @@ def build_initial_conditions(
             default: 0
             "65+": 5      # exactly 5 individuals in the 65+ group
 
+    Values are returned as whole numbers of individuals:
+
+    * An int scalar is split with largest-remainder rounding, so its total is
+      kept exactly (``Infected: 5`` on groups of relative size
+      0.05/0.16/0.38/0.21/0.20 gives ``[0, 1, 2, 1, 1]``).
+    * Fraction-derived counts are rounded the same way, keeping their total.
+    * When every compartment is given, each group is then made to sum exactly
+      to its size ``Nk[g]``; the difference left by rounding (and by the
+      tolerance of the "fractions sum to 1" check) goes to the compartment
+      with the most individuals in that group (in practice the susceptible
+      one).
+
     Args:
         config: The full config dict.
         model: The configured model (to know compartments and population size).
 
     Returns:
-        Initial conditions dict, or None to use defaults.
+        Initial conditions dict of integer arrays, or None to use defaults.
     """
     ic_cfg = config.get("initial_conditions")
     if not ic_cfg:
@@ -976,6 +1004,7 @@ def build_initial_conditions(
     total_pop = pop_sizes.sum()
 
     ic_dict = {}
+    int_totals: Dict[str, int] = {}  # int-scalar compartments: exact totals
     for comp_name, value in ic_cfg.items():
         resolved = _resolve_compartment(comp_name, model.compartments)
         if resolved is None:
@@ -1012,12 +1041,16 @@ def build_initial_conditions(
                     fracs[group_names.index(group_key)] = float(frac)
                 ic_dict[resolved] = pop_sizes * fracs
         elif isinstance(value, int):
-            # count mode: distribute proportionally across groups
+            # count mode: distribute proportionally across groups. Rounded
+            # after the normalization check (below) so that the check sees the
+            # exact split, keeping the total number of individuals exactly.
             ic_dict[resolved] = pop_sizes * (float(value) / total_pop)
+            int_totals[resolved] = value
         else:
             ic_dict[resolved] = pop_sizes * float(value)
 
-    if ic_dict and set(ic_dict.keys()) == set(model.compartments):
+    complete = bool(ic_dict) and set(ic_dict.keys()) == set(model.compartments)
+    if complete:
         total_fracs = sum(counts / pop_sizes for counts in ic_dict.values())
         for group, s in zip(group_names, total_fracs):
             if abs(s - 1.0) > 1e-4:
@@ -1025,6 +1058,31 @@ def build_initial_conditions(
                     f"initial_conditions: fractions for group '{group}' sum to "
                     f"{s:.6g}, expected 1.0"
                 )
+
+    # Whole numbers of individuals: assigning floats into the integer state
+    # array would otherwise truncate them toward zero.
+    for comp, counts in ic_dict.items():
+        ic_dict[comp] = round_preserving_sum(counts, total=int_totals.get(comp))
+
+    if complete:
+        # Make every group sum exactly to its size. The difference goes to the
+        # compartment with the most individuals in that group.
+        group_sizes = np.asarray(model.population.Nk).astype(int)
+        comps = list(ic_dict)
+        stacked = np.vstack([ic_dict[c] for c in comps])
+        diffs = group_sizes - stacked.sum(axis=0)
+        for g, diff in enumerate(diffs):
+            if diff == 0:
+                continue
+            k = int(np.argmax(stacked[:, g]))
+            if stacked[k, g] + diff < 0:
+                raise ValueError(
+                    f"initial_conditions: group '{group_names[g]}' has "
+                    f"{stacked[:, g].sum()} individuals but its size is "
+                    f"{group_sizes[g]}"
+                )
+            stacked[k, g] += diff
+        ic_dict = {c: stacked[i] for i, c in enumerate(comps)}
 
     return ic_dict if ic_dict else None
 

@@ -707,6 +707,177 @@ def _multi_group_model():
     return model
 
 
+# Netherlands age groups (0-4, 5-19, 20-49, 50-64, 65+), used to reproduce
+# the seed-truncation bug without downloading population data.
+NL_NK = [889_623, 2_865_369, 6_946_651, 3_773_977, 3_689_933]
+
+
+def _nl_model(model_type="SEIR"):
+    model = load_predefined_model(model_type)
+    pop = Population()
+    pop.add_population(NL_NK, Nk_names=["0-4", "5-19", "20-49", "50-64", "65+"])
+    pop.add_contact_matrix(np.ones((5, 5)))
+    model.set_population(pop)
+    return model
+
+
+class TestInitialConditionRounding:
+    """Integer initial conditions are kept whole and exact (seed-truncation bug)."""
+
+    def _state(self, model, ic):
+        import warnings
+
+        from epydemix.utils.utils import apply_initial_conditions
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # the CLI must hand over whole numbers
+            return apply_initial_conditions(model, ic)
+
+    def test_issue_config_keeps_five_seeds(self):
+        model = _nl_model()
+        N = sum(NL_NK)
+        cfg = {
+            "initial_conditions": {
+                "Susceptible": N - 5,
+                "Exposed": 0,
+                "Infected": 5,
+                "Recovered": 0,
+            }
+        }
+        ic = build_initial_conditions(cfg, model)
+        assert ic["Infected"].tolist() == [0, 1, 2, 1, 1]
+        assert all(np.issubdtype(v.dtype, np.integer) for v in ic.values())
+        state = self._state(model, ic)
+        assert state[model.compartments_idx["Infected"]].sum() == 5
+        assert state.sum(axis=0).tolist() == NL_NK
+        # matches the per-group workaround from the issue
+        assert ic["Susceptible"].tolist() == [889_623, 2_865_368, 6_946_649, 3_773_976, 3_689_932]
+
+    @pytest.mark.parametrize("seeds", [1, 2, 7, 13])
+    def test_int_scalar_total_is_kept(self, seeds):
+        model = _multi_group_model()
+        cfg = {"initial_conditions": {"Infected": seeds}}
+        ic = build_initial_conditions(cfg, model)
+        assert ic["Infected"].sum() == seeds
+
+    def test_fraction_scalars_sum_exactly_to_group_sizes(self):
+        model = _nl_model()
+        cfg = {
+            "initial_conditions": {
+                "Susceptible": 1 - 3e-6,
+                "Exposed": 2e-6,
+                "Infected": 1e-6,
+                "Recovered": 0.0,
+            }
+        }
+        ic = build_initial_conditions(cfg, model)
+        state = self._state(model, ic)
+        assert state.sum(axis=0).tolist() == NL_NK
+        assert ic["Infected"].sum() == round(1e-6 * sum(NL_NK))  # 18, not truncated
+        assert ic["Exposed"].sum() == round(2e-6 * sum(NL_NK))
+
+    def test_tolerance_slack_goes_to_largest_compartment(self):
+        """Fractions within the 1e-4 tolerance: the difference goes to Susceptible."""
+        model = _multi_group_model()  # groups of 10_000, 20_000, 5_000
+        cfg = {
+            "initial_conditions": {
+                "Susceptible": 0.98995,  # sums to 0.99995
+                "Infected": 0.01,
+                "Recovered": 0.0,
+            }
+        }
+        ic = build_initial_conditions(cfg, model)
+        assert ic["Infected"].tolist() == [100, 200, 50]
+        total = sum(ic.values())
+        assert total.tolist() == [10_000, 20_000, 5_000]
+
+    def test_small_groups_int_counts_pass_normalization(self):
+        """Rounding happens after the sum check: one person in a group of 10 is 0.1."""
+        model = load_predefined_model("SIR")
+        pop = Population()
+        pop.add_population([10, 10, 10])
+        pop.add_contact_matrix(np.ones((3, 3)))
+        model.set_population(pop)
+        cfg = {"initial_conditions": {"Susceptible": 29, "Infected": 1, "Recovered": 0}}
+        ic = build_initial_conditions(cfg, model)
+        assert ic["Infected"].sum() == 1
+        assert ic["Susceptible"].sum() == 29
+        assert sum(ic.values()).tolist() == [10, 10, 10]
+
+    def test_partial_ic_rounded_not_balanced(self):
+        model = _nl_model("SIR")
+        ic = build_initial_conditions({"initial_conditions": {"Infected": 5}}, model)
+        assert set(ic) == {"Infected"}
+        assert ic["Infected"].tolist() == [0, 1, 2, 1, 1]
+
+    def test_count_dict_unchanged(self):
+        model = _nl_model()
+        cfg = {
+            "initial_conditions": {
+                "Susceptible": {"unit": "count", "0-4": 889_623, "5-19": 2_865_368,
+                                "20-49": 6_946_649, "50-64": 3_773_976, "65+": 3_689_932},
+                "Exposed": {"unit": "count", "default": 0},
+                "Infected": {"unit": "count", "default": 0, "5-19": 1, "20-49": 2,
+                             "50-64": 1, "65+": 1},
+                "Recovered": {"unit": "count", "default": 0},
+            }
+        }
+        ic = build_initial_conditions(cfg, model)
+        assert ic["Infected"].tolist() == [0, 1, 2, 1, 1]
+        assert sum(ic.values()).tolist() == NL_NK
+
+    def test_validate_rejects_fractional_count(self):
+        cfg = dict(MINIMAL_CONFIG)
+        cfg["initial_conditions"] = {
+            "Susceptible": 99_997,
+            "Infected": {"unit": "count", "default": 2.5},
+            "Recovered": 0,
+        }
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert any("whole number" in e for e in result["errors"])
+
+    @pytest.mark.parametrize("bad", [True, -5, "five"])
+    def test_validate_rejects_bad_scalars(self, bad):
+        cfg = dict(MINIMAL_CONFIG)
+        cfg["initial_conditions"] = {"Susceptible": 99_995, "Infected": bad, "Recovered": 0}
+        result = validate_config(cfg)
+        assert not result["valid"]
+
+    def test_cli_run_starts_with_all_seeds(self, tmp_path, monkeypatch):
+        """End to end: `epydemix run` on the issue's config keeps 5 infected people."""
+        from epydemix.io import load_bundle_dataframe
+        from epydemix.model.epimodel import EpiModel
+
+        def fake_import(self, population_name, contact_layers=None, **kwargs):
+            self.set_population(_nl_model().population)
+
+        monkeypatch.setattr(EpiModel, "import_epydemix_population", fake_import)
+        N = sum(NL_NK)
+        cfg = {
+            "model": {"type": "SIR"},
+            "population": {"name": "Netherlands"},
+            "simulation": {
+                "start_date": "2023-01-01",
+                "end_date": "2023-01-03",
+                "n_simulations": 3,
+                "seed": 1,
+            },
+            # frozen dynamics: the seeded state is carried through unchanged
+            "parameters": {"transmission_rate": 0.0, "recovery_rate": 0.0},
+            "initial_conditions": {"Susceptible": N - 5, "Infected": 5, "Recovered": 0},
+        }
+        out = str(tmp_path / "out.epx")
+        result = CliRunner().invoke(cli, ["run", _write_yaml(tmp_path, cfg), "-o", out])
+        assert result.exit_code == 0, result.output
+        df = load_bundle_dataframe(out, "compartments")
+        assert (df["Infected_total"] == 5).all()
+        groups = [df[f"Infected_{g}"] for g in ["0-4", "5-19", "20-49", "50-64", "65+"]]
+        assert [int(g.iloc[0]) for g in groups] == [0, 1, 2, 1, 1]
+        total = df["Susceptible_total"] + df["Infected_total"] + df["Recovered_total"]
+        assert (total == N).all()
+
+
 class TestBuildInitialConditions:
     def test_scalar_broadcast(self):
         """Scalar fraction is applied uniformly to every group (existing behaviour)."""
