@@ -277,12 +277,17 @@ initial_conditions:
 # of valid names.
 
 # ── Interventions (optional) ─────────────────────────────────────
-# Reduce contact on a specific layer for a time window.
+# Scale contacts on one layer for a time window. reduction_factor is the factor
+# the layer's contacts are MULTIPLIED by (the share kept), as in the Python API's
+# EpiModel.add_intervention: 0.2 keeps 20% (an 80% reduction), 0.0 is a full
+# closure, 1.0 changes nothing. `layer` must be one of population.contact_layers
+# (a population without a name has a single layer, "all").
+# The old field name `reduction` still works, with the same meaning, but is deprecated.
 interventions:
   - layer: "school"
     start_date: "2020-03-10"
     end_date: "2020-06-01"
-    reduction: 0.8                  # 80% reduction in school contacts
+    reduction_factor: 0.2           # keeps 20% of school contacts (80% reduction)
 
 # ── Parameter overrides (optional) ───────────────────────────────
 # Change a parameter value for a time window (e.g., lockdown effect).
@@ -719,6 +724,7 @@ Use these rules to translate natural-language disease descriptions into transiti
 - Every parameter referenced in `transitions` must appear in the `parameters` section.
 - Every compartment referenced in `transitions` must appear in `compartments`.
 - `initial_conditions` must cover all compartments and fractions must sum to 1.0.
+- `interventions[].reduction_factor` is the share of contacts kept, not the share removed: a 70% reduction is `reduction_factor: 0.3`.
 - Only `spontaneous`, `mediated`, and `scheduled` kinds are available via config.
 - Do not create transitions where source == target.
 

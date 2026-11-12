@@ -900,6 +900,175 @@ class TestInitialConditionRounding:
         assert (total == N).all()
 
 
+# ---------------------------------------------------------------------------
+# Interventions: reduction_factor multiplies the layer's contacts
+# ---------------------------------------------------------------------------
+
+LAYERS = ["home", "work", "school", "community"]
+
+
+def _layered_population():
+    """Two groups, four named layers, distinct matrices per layer."""
+    pop = Population()
+    pop.add_population([6_000, 4_000], Nk_names=["young", "old"])
+    for i, layer in enumerate(LAYERS, start=1):
+        pop.add_contact_matrix(np.array([[i, 0.5], [0.5, i]]), layer_name=layer)
+    return pop
+
+
+@pytest.fixture
+def layered_population(monkeypatch):
+    """Make `population: {name: ...}` load the synthetic layered population."""
+    from epydemix.model.epimodel import EpiModel
+
+    def fake_import(self, population_name, contact_layers=None, **kwargs):
+        self.set_population(_layered_population())
+
+    monkeypatch.setattr(EpiModel, "import_epydemix_population", fake_import)
+
+
+def _intervention_config(intv=None, **extra):
+    cfg = {
+        "model": {"type": "SIR"},
+        "population": {"name": "Testland", "contact_layers": LAYERS},
+        "simulation": {
+            "start_date": "2020-03-01",
+            "end_date": "2020-03-31",
+            "n_simulations": 3,
+            "seed": 7,
+        },
+        "parameters": {"transmission_rate": 0.05, "recovery_rate": 0.1},
+        "initial_conditions": {"Susceptible": 9_900, "Infected": 100, "Recovered": 0},
+    }
+    if intv is not None:
+        base = {"layer": "school", "start_date": "2020-03-10", "end_date": "2020-03-20"}
+        cfg["interventions"] = [{**base, **intv}]
+    cfg.update(extra)
+    return cfg
+
+
+class TestInterventions:
+    def _school(self, cfg):
+        import pandas as pd
+
+        model = build_model_from_config(cfg)
+        dates = pd.date_range("2020-03-01", "2020-03-31")
+        model.compute_contact_reductions(dates)
+        original = model.population.contact_matrices["school"]
+        inside = model.Cs[pd.Timestamp("2020-03-15")]["school"]
+        outside = model.Cs[pd.Timestamp("2020-03-25")]["school"]
+        return original, inside, outside
+
+    @pytest.mark.parametrize("factor", [1.0, 0.8, 0.2, 0.0])
+    def test_factor_multiplies_layer_contacts(self, layered_population, factor):
+        """reduction_factor is the share of contacts kept: 0.2 keeps 20%."""
+        original, inside, outside = self._school(
+            _intervention_config({"reduction_factor": factor})
+        )
+        np.testing.assert_allclose(inside, factor * original)
+        np.testing.assert_allclose(outside, original)
+
+    def test_deprecated_reduction_has_same_meaning(self, layered_population):
+        _, new, _ = self._school(_intervention_config({"reduction_factor": 0.3}))
+        _, old, _ = self._school(_intervention_config({"reduction": 0.3}))
+        np.testing.assert_allclose(old, new)
+        result = validate_config(_intervention_config({"reduction": 0.3}))
+        assert result["valid"], result["errors"]
+        assert any("deprecated" in w for w in result["warnings"])
+
+    def test_new_name_gives_no_warning(self):
+        result = validate_config(_intervention_config({"reduction_factor": 0.3}))
+        assert result["valid"], result["errors"]
+        assert not any("intervention" in w for w in result["warnings"])
+
+    @pytest.mark.parametrize(
+        "intv, message",
+        [
+            ({"reduction_factor": 0.3, "reduction": 0.3}, "both"),
+            ({}, "reduction_factor is required"),
+            ({"reduction_factor": -0.2}, "must not be negative"),
+            ({"reduction_factor": "half"}, "must be a number"),
+            ({"reduction_factor": True}, "must be a number"),
+            ({"reduction_factor": 0.5, "start_date": "2020-03-25"}, "after end_date"),
+            ({"reduction_factor": 0.5, "end_date": "not-a-date"}, "not a valid date"),
+            ({"reduction_factor": 0.5, "layer": "schol"}, "Did you mean 'school'"),
+        ],
+    )
+    def test_invalid_interventions_are_errors(self, intv, message):
+        result = validate_config(_intervention_config(intv))
+        assert not result["valid"]
+        assert any(message in e for e in result["errors"]), result["errors"]
+
+    def test_layer_checked_against_default_population(self):
+        """Without a named population there is only the 'all' layer."""
+        cfg = _intervention_config({"reduction_factor": 0.5})
+        del cfg["population"]
+        result = validate_config(cfg)
+        assert not result["valid"]
+        assert any("Available layers: all" in e for e in result["errors"])
+        cfg["interventions"][0]["layer"] = "all"
+        assert validate_config(cfg)["valid"]
+
+    def test_layer_checked_against_default_named_layers(self):
+        cfg = _intervention_config({"reduction_factor": 0.5})
+        del cfg["population"]["contact_layers"]
+        assert validate_config(cfg)["valid"]  # school is a default layer
+
+    @pytest.mark.parametrize(
+        "factor, message", [(1.0, "no effect"), (1.5, "increases")]
+    )
+    def test_no_effect_and_increase_are_warnings(self, factor, message):
+        result = validate_config(_intervention_config({"reduction_factor": factor}))
+        assert result["valid"], result["errors"]
+        assert any(message in w for w in result["warnings"])
+
+    def test_interventions_must_be_a_list(self):
+        result = validate_config(
+            _intervention_config(interventions={"layer": "school"})
+        )
+        assert not result["valid"]
+
+    def _run(self, tmp_path, cfg, name):
+        from epydemix.io import load_bundle_dataframe
+
+        out = str(tmp_path / f"{name}.epx")
+        path = _write_yaml(tmp_path, cfg, name=f"{name}.yaml")
+        result = CliRunner().invoke(cli, ["run", path, "-o", out])
+        assert result.exit_code == 0, result.output
+        return result, load_bundle_dataframe(out, "compartments")
+
+    def test_cli_run_end_to_end(self, tmp_path, layered_population):
+        """Closure changes the epidemic; a factor of 1.0 changes nothing."""
+        _, base = self._run(tmp_path, _intervention_config(), "base")
+        _, same = self._run(
+            tmp_path, _intervention_config({"reduction_factor": 1.0}), "same"
+        )
+        _, closed = self._run(
+            tmp_path, _intervention_config({"reduction_factor": 0.0}), "closed"
+        )
+        assert base["Infected_total"].tolist() == same["Infected_total"].tolist()
+        assert base["Infected_total"].tolist() != closed["Infected_total"].tolist()
+
+    def test_cli_run_old_config_still_runs_with_warning(
+        self, tmp_path, layered_population
+    ):
+        result, df = self._run(
+            tmp_path, _intervention_config({"reduction": 0.5}), "old"
+        )
+        assert "deprecated" in result.output
+        _, new = self._run(
+            tmp_path, _intervention_config({"reduction_factor": 0.5}), "new"
+        )
+        assert df["Infected_total"].tolist() == new["Infected_total"].tolist()
+
+    def test_schema_explains_reduction_factor(self):
+        result = CliRunner().invoke(cli, ["schema", "SIR"])
+        assert result.exit_code == 0
+        data = json.loads(result.output[result.output.index("{") :])
+        assert "reduction_factor" in data["$comment"]
+        assert "reduction_factor" not in data["properties"]
+
+
 class TestBuildInitialConditions:
     def test_scalar_broadcast(self):
         """Scalar fraction is applied uniformly to every group (existing behaviour)."""

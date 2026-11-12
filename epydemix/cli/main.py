@@ -516,12 +516,18 @@ def schema(model_name, fmt, waning_immunity, vaccination, outcome):
     except ValueError as e:
         _error_json("INVALID_MODULE", str(e))
 
+    from .config import INTERVENTION_FACTOR_HELP
+
     registry = model.parameter_registry
 
     if fmt == "json-schema":
-        _print_json(registry.to_json_schema(title=f"{model_name} Model Parameters"))
+        out = registry.to_json_schema(title=f"{model_name} Model Parameters")
+        # Not a parameter, so it goes in a comment rather than in `properties`.
+        out["$comment"] = INTERVENTION_FACTOR_HELP
+        _print_json(out)
     else:
         click.echo(registry.describe())
+        click.echo(f"\nInterventions: {INTERVENTION_FACTOR_HELP}")
 
 
 # ---------------------------------------------------------------------------
