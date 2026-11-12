@@ -42,8 +42,11 @@ jobs:
   test:
     needs: lint
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # ubuntu-latest is Ubuntu 26.04, which has no Python 3.8 or 3.9.
+        # Pinned to 24.04 for as long as we support those versions.
+        os: [ubuntu-24.04, windows-latest, macos-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11"]
 
     runs-on: ${{ matrix.os }}
