@@ -9,20 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-* **Initial conditions were truncated toward zero.** `apply_initial_conditions` wrote values into an integer array, so fractional values lost their decimals without any warning. In the CLI, an integer initial condition split across age groups lost people: `Infected: 5` on the Netherlands started every run with 3 infected people and none under 20, which made early extinction far more likely. The CLI now uses largest-remainder rounding, so an integer total is kept exactly, and makes each group sum to its size. In the Python API, non-integer values in `initial_conditions_dict` are rounded to the nearest integer with a `UserWarning` instead of being truncated. `epydemix validate` now rejects counts that are not whole numbers, negative values, and booleans in `initial_conditions`.
-* **The meaning of CLI intervention values was documented backwards.** The value is the factor the layer's contacts are multiplied by, which is the share kept, as in `EpiModel.add_intervention(reduction_factor=...)`. `AGENT.md` described it as the share removed (`reduction: 0.8  # 80% reduction`), and the "school closure" in `AGENT_EXAMPLES.md` (`reduction: 0.9`) kept 90% of school contacts. Configs written from these docs got the complement of the intended reduction for every value except 0.5, so results of CLI studies that used other values are worth re-checking. The simulation itself is unchanged.
-
-### Changed
-
-* **CLI interventions: `reduction` is renamed `reduction_factor`**, the name and meaning used by the Python API. `reduction` still works, with the same meaning and identical results, but `validate`, `run`, `calibrate` and `project` warn that it is deprecated. `epydemix schema` now states what the value means.
+## [1.6.0] - 2026-11-12
 
 ### Added
 
 * **Validation of CLI interventions.** `epydemix validate` reports:
   * as errors: a missing or negative factor, a factor that is not a number, both `reduction_factor` and `reduction` set, missing or invalid dates, a start date after the end date, and a layer that is not one of the population's contact layers (with a suggestion for a near miss). Before, the last of these failed only at run time, with a bare `KeyError`;
   * as warnings: a factor of 1.0, which has no effect, and a factor above 1, which increases contacts.
+
+### Changed
+
+* **CLI interventions: `reduction` is renamed `reduction_factor`**, the name and meaning used by the Python API. `reduction` still works, with the same meaning and identical results, but `validate`, `run`, `calibrate` and `project` warn that it is deprecated. `epydemix schema` now states what the value means.
+
+### Fixed
+
+* **Initial conditions were truncated toward zero.** `apply_initial_conditions` wrote values into an integer array, so fractional values lost their decimals without any warning. In the CLI, an integer initial condition split across age groups lost people: `Infected: 5` on the Netherlands started every run with 3 infected people and none under 20, which made early extinction far more likely. The CLI now uses largest-remainder rounding, so an integer total is kept exactly, and makes each group sum to its size. In the Python API, non-integer values in `initial_conditions_dict` are rounded to the nearest integer with a `UserWarning` instead of being truncated. `epydemix validate` now rejects counts that are not whole numbers, negative values, and booleans in `initial_conditions`.
+* **The meaning of CLI intervention values was documented backwards.** The value is the factor the layer's contacts are multiplied by, which is the share kept, as in `EpiModel.add_intervention(reduction_factor=...)`. `AGENT.md` described it as the share removed (`reduction: 0.8  # 80% reduction`), and the "school closure" in `AGENT_EXAMPLES.md` (`reduction: 0.9`) kept 90% of school contacts. Configs written from these docs got the complement of the intended reduction for every value except 0.5, so results of CLI studies that used other values are worth re-checking. The simulation itself is unchanged.
+
+---
 
 ## [1.5.0] - 2026-10-21
 
